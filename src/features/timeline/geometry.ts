@@ -1,5 +1,5 @@
 /** Pure timeline geometry helpers (unit-tested). */
-import { clipEnd, type Id, type Project, type Track } from '../../core';
+import { clipEnd, type Id, type Project, type Track, type TrackLayout } from '../../core';
 
 /** Display order of tracks: highest compositing order at the top. */
 export function displayTracks(project: Project): Track[] {
@@ -25,4 +25,18 @@ export function contentWidthPx(duration: number, zoom: number, viewportPx: numbe
 export function fitZoom(duration: number, viewportPx: number): number {
   if (duration <= 0 || viewportPx <= 0) return 60;
   return (viewportPx * 0.92) / duration;
+}
+
+/**
+ * Clips touched by a selection box: time range [t0, t1] (any order) and
+ * vertical range [y0, y1] in rows coordinates, against the track layout.
+ */
+export function clipsInBox(project: Project, layout: readonly TrackLayout[], t0: number, t1: number, y0: number, y1: number): Id[] {
+  const [ta, tb] = t0 <= t1 ? [t0, t1] : [t1, t0];
+  const [ya, yb] = y0 <= y1 ? [y0, y1] : [y1, y0];
+  const tracks = new Set(layout.filter((l) => l.top < yb && l.top + l.height > ya).map((l) => l.trackId));
+  return Object.values(project.clips)
+    .filter((c) => tracks.has(c.trackId) && c.start < tb && clipEnd(c) > ta)
+    .sort((a, b) => a.start - b.start)
+    .map((c) => c.id);
 }

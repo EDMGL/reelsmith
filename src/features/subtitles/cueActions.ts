@@ -14,9 +14,11 @@ import {
   type SubtitleClip,
   type SubtitleStyle,
   type Track,
+  type WordTiming,
 } from '../../core';
 import { resolveOverlaps, splitCue, splitCueText, mergeCues } from './cueMath';
 import type { Cue } from './formats';
+import { rebaseWords, splitWords, tokenize } from './wordTiming';
 
 const S = () => useEditorStore.getState();
 
@@ -36,7 +38,12 @@ export function cueClips(project: Project, trackId: Id | null | undefined): Subt
 }
 
 export function clipsToCues(clips: readonly SubtitleClip[]): Cue[] {
-  return clips.map((c) => ({ start: c.start, end: c.start + c.duration, text: c.text }));
+  return clips.map((c) => ({
+    start: c.start,
+    end: c.start + c.duration,
+    text: c.text,
+    ...(c.words ? { words: c.words.map((w) => ({ text: w.text, start: c.start + w.start, end: c.start + w.end })) } : {}),
+  }));
 }
 
 function minDur(project: Project): number {
@@ -82,7 +89,9 @@ export function importCues(cues: readonly Cue[], opts: { trackId?: Id | null; re
     report.trimmed = r.trimmed;
     report.skipped = r.skipped;
     for (const cue of r.placed) {
-      const clip = createSubtitleClip({ trackId: trackId!, start: cue.start, duration: cue.end - cue.start, text: cue.text, name: cueName(cue.text) });
+      const ms = (x: number) => Math.round(x * 1000) / 1000;
+      const words = cue.words?.map((w) => ({ text: w.text, start: ms(w.start - cue.start), end: ms(w.end - cue.start) }));
+      const clip = createSubtitleClip({ trackId: trackId!, start: cue.start, duration: cue.end - cue.start, text: cue.text, name: cueName(cue.text), words });
       if (S().addClip(clip)) report.added++;
       else report.skipped++;
     }
@@ -116,7 +125,10 @@ export function setCueText(id: Id, text: string): boolean {
 /** Sets both edges; rejected (false) if invalid or overlapping a neighbour. */
 export function setCueTiming(id: Id, start: number, end: number): boolean {
   if (!(end > start) || start < 0) return false;
-  return S().updateClip(id, { start, duration: end - start });
+  const clip = S().project.clips[id];
+  // Word timings stay on the same audio when the start edge moves.
+  const words = clip?.type === 'subtitle' && clip.words && start !== clip.start ? rebaseWords(clip.words, Math.round((start - clip.start) * 1000) / 1000) : undefined;
+  return S().updateClip(id, { start, duration: end - start, ...(words ? { words } : {}) });
 }
 
 /** Splits a cue at `t` (or its middle if `t` is not inside), dividing the text at a word boundary. */
@@ -126,14 +138,29 @@ export function splitCueAt(id: Id, t?: number): Id | null {
   const md = minDur(S().project);
   const end = clip.start + clip.duration;
   const at = t !== undefined && t - clip.start >= md && end - t >= md ? t : clip.start + clip.duration / 2;
-  const parts = splitCue({ start: clip.start, end, text: clip.text }, at, md);
+  let parts = splitCue({ start: clip.start, end, text: clip.text }, at, md);
   if (!parts) return null;
+  // With real word timings, split the text where the words actually are.
+  let wordParts: [WordTiming[], WordTiming[]] | null = null;
+  const tokens = tokenize(clip.text);
+  if (clip.words && clip.words.length === tokens.length && tokens.length > 1) {
+    const timed = clip.words.map((w, i) => ({ ...w, text: tokens[i]! }));
+    const [a, b] = splitWords(timed, at - clip.start);
+    if (a.length > 0 && b.length > 0) {
+      wordParts = [a, b];
+      parts = [
+        { ...parts[0], text: a.map((w) => w.text).join(' ') },
+        { ...parts[1], text: b.map((w) => w.text).join(' ') },
+      ];
+    }
+  }
+  const [p0, p1] = parts;
   let newId: Id | null = null;
   S().transact('Split subtitle', () => {
     newId = S().splitClip(id, at);
     if (!newId) return;
-    S().updateClip(id, { text: parts[0].text, name: cueName(parts[0].text) });
-    S().updateClip(newId, { text: parts[1].text, name: cueName(parts[1].text) });
+    S().updateClip(id, { text: p0.text, name: cueName(p0.text), words: wordParts?.[0] });
+    S().updateClip(newId, { text: p1.text, name: cueName(p1.text), words: wordParts?.[1] });
   });
   return newId;
 }
@@ -151,7 +178,9 @@ export function mergeWithNext(id: Id): boolean {
   S().transact('Merge subtitles', () => {
     S().removeClips([next.id]);
     if (S().project.clips[next.id]) return; // locked
-    ok = S().updateClip(id, { duration: merged.end - merged.start, text: merged.text, name: cueName(merged.text) });
+    const words =
+      clip.words && next.words ? [...clip.words, ...next.words.map((w) => ({ ...w, start: w.start + next.start - clip.start, end: w.end + next.start - clip.start }))] : undefined;
+    ok = S().updateClip(id, { duration: merged.end - merged.start, text: merged.text, name: cueName(merged.text), words });
     if (!ok) S().cancelTransaction();
   });
   return ok;

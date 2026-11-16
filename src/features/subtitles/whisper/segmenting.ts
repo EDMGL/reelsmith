@@ -134,10 +134,91 @@ export function segmentsToCues(segments: readonly WhisperSegment[], chunkStart: 
   return out;
 }
 
+export interface TimedWord {
+  text: string;
+  /** Seconds relative to the chunk start. */
+  start: number;
+  end: number | null;
+}
+
+export interface WordCueOptions {
+  /** Max characters per cue (short cues read better with word highlighting). */
+  maxChars?: number;
+  /** Max cue duration, seconds. */
+  maxDur?: number;
+  /** A pause longer than this starts a new cue, seconds. */
+  maxGap?: number;
+}
+
+const SENTENCE_END = /[.!?…]["')\]]*$/;
+const PUNCT_ONLY = /^[\p{P}\p{S}]+$/u;
+
+/**
+ * Groups word-level timestamps into short cues, breaking at pauses, sentence
+ * ends, `maxChars` and `maxDur`. Each cue keeps its words (absolute times) for
+ * word-by-word highlighting.
+ */
+export function wordsToCues(input: readonly TimedWord[], chunkStart: number, chunkEnd: number, opts: WordCueOptions = {}): Cue[] {
+  const maxChars = opts.maxChars ?? 32;
+  const maxDur = opts.maxDur ?? 4;
+  const maxGap = opts.maxGap ?? 0.6;
+  const chunkLen = chunkEnd - chunkStart;
+  // Clean: trim, glue punctuation-only tokens to the previous word, close open ends.
+  const words: { text: string; start: number; end: number }[] = [];
+  input.forEach((w, i) => {
+    const text = w.text.replace(/\s+/g, ' ').trim();
+    if (!text) return;
+    const start = Math.min(Math.max(0, w.start), chunkLen);
+    const nextStart = input[i + 1]?.start ?? chunkLen;
+    let end = w.end ?? Math.min(start + 0.4, nextStart);
+    end = Math.min(Math.max(end, start), chunkLen);
+    const prev = words[words.length - 1];
+    if (prev && PUNCT_ONLY.test(text)) {
+      prev.text += text;
+      prev.end = Math.max(prev.end, end);
+      return;
+    }
+    words.push({ text, start, end });
+  });
+  const cues: Cue[] = [];
+  let cur: typeof words = [];
+  const flush = () => {
+    if (cur.length === 0) return;
+    const text = cur.map((w) => w.text).join(' ');
+    if (!isHallucination(text)) {
+      const first = cur[0]!;
+      const last = cur[cur.length - 1]!;
+      cues.push({
+        start: chunkStart + first.start,
+        end: chunkStart + Math.max(last.end, first.start + 0.2),
+        text,
+        words: cur.map((w) => ({ text: w.text, start: chunkStart + w.start, end: chunkStart + w.end })),
+      });
+    }
+    cur = [];
+  };
+  for (const w of words) {
+    if (cur.length > 0) {
+      const curText = cur.map((x) => x.text).join(' ');
+      const last = cur[cur.length - 1]!;
+      const tooLong = curText.length + 1 + w.text.length > maxChars;
+      const tooSlow = w.end - cur[0]!.start > maxDur;
+      const pause = w.start - last.end > maxGap;
+      const sentence = SENTENCE_END.test(last.text) && curText.length >= 12;
+      if (tooLong || tooSlow || pause || sentence) flush();
+    }
+    cur.push(w);
+  }
+  flush();
+  return cues;
+}
+
 /** Sorts cues, rounds to ms and trims overlaps (an earlier cue ends where the next starts). */
 export function normalizeCues(cues: readonly Cue[], minDur = 0.2): Cue[] {
   const r = (x: number) => Math.round(x * 1000) / 1000;
-  const sorted = [...cues].map((c) => ({ start: r(c.start), end: r(c.end), text: c.text })).sort((a, b) => a.start - b.start);
+  const sorted = [...cues]
+    .map((c) => ({ start: r(c.start), end: r(c.end), text: c.text, ...(c.words ? { words: c.words.map((w) => ({ text: w.text, start: r(w.start), end: r(w.end) })) } : {}) }))
+    .sort((a, b) => a.start - b.start);
   const out: Cue[] = [];
   for (const c of sorted) {
     const prev = out[out.length - 1];

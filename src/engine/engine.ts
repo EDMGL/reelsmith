@@ -356,8 +356,15 @@ export class ErdemcutEngine implements PlaybackEngine {
     slot.gain = undefined;
   }
 
+  private previewMuted = false;
+
+  setPreviewMuted(muted: boolean): void {
+    this.previewMuted = muted;
+    if (muted) for (const slot of this.previewPool.values()) this.setGain(slot, 0);
+  }
+
   private setGain(slot: MediaSlot, value: number): void {
-    const v = Number.isFinite(value) ? Math.max(0, value) : 0;
+    const v = this.previewMuted || !Number.isFinite(value) ? 0 : Math.max(0, value);
     if (slot.gain && this.audioCtx) {
       const p = slot.gain.gain;
       if (Math.abs(p.value - v) < 1e-4) return;

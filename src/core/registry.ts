@@ -178,9 +178,22 @@ export function registerPanel(def: PanelDefinition): Unregister {
 // ---------------------------------------------------------------------------
 
 export interface InspectorProps<T extends ClipType = ClipType> {
+  /** The clip being shown. With several clips selected: the first selected clip this section applies to. */
   clip: ClipOf<T>;
   track: Track;
   project: Project;
+  /**
+   * Every selected clip this section applies to (`clip` first). Undefined or
+   * `[clip.id]` for a single selection. Only sections registered with
+   * `multi: true` are shown for multiple clips; they should apply edits to all
+   * of these (see `inspectorTargets`).
+   */
+  targets?: readonly Id[];
+}
+
+/** The clip ids an inspector edit should apply to. */
+export function inspectorTargets(props: Pick<InspectorProps, 'clip' | 'targets'>): readonly Id[] {
+  return props.targets && props.targets.length > 0 ? props.targets : [props.clip.id];
 }
 
 export interface InspectorDefinition {
@@ -192,6 +205,8 @@ export interface InspectorDefinition {
   component: MaybeLazy<InspectorProps<ClipType>>;
   /** Section order, lower first (default 100). The core "Clip" timing section is 0. */
   order?: number;
+  /** Also shown when several clips are selected (edits apply to all of them). */
+  multi?: boolean;
 }
 export const inspectorRegistry = new Registry<InspectorDefinition>();
 
@@ -206,7 +221,7 @@ export const inspectorRegistry = new Registry<InspectorDefinition>();
 export function registerInspector<T extends ClipType>(
   clipType: T | readonly T[] | '*',
   component: MaybeLazy<InspectorProps<T>>,
-  opts: { id?: string; title?: string; order?: number } = {},
+  opts: { id?: string; title?: string; order?: number; multi?: boolean } = {},
 ): Unregister {
   const clipTypes = clipType === '*' ? '*' : Array.isArray(clipType) ? (clipType as readonly T[]) : [clipType as T];
   const id = opts.id ?? `inspector:${clipTypes === '*' ? '*' : clipTypes.join(',')}`;
@@ -216,6 +231,7 @@ export function registerInspector<T extends ClipType>(
     clipTypes,
     component: component as unknown as MaybeLazy<InspectorProps<ClipType>>,
     order: opts.order,
+    multi: opts.multi,
   });
 }
 

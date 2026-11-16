@@ -162,7 +162,7 @@ export function roundedRectPath(ctx: Canvas2D, x: number, y: number, w: number, 
  * picture at any output resolution (preview vs export), map the shadow offset
  * and blur through the current matrix ourselves.
  */
-function applyShadow(ctx: Canvas2D, shadow: NonNullable<TextStyle['shadow']>): void {
+export function applyShadow(ctx: Canvas2D, shadow: NonNullable<TextStyle['shadow']>): void {
   let ox = shadow.offsetX;
   let oy = shadow.offsetY;
   let blur = shadow.blur;
@@ -179,7 +179,7 @@ function applyShadow(ctx: Canvas2D, shadow: NonNullable<TextStyle['shadow']>): v
   ctx.shadowOffsetY = oy;
 }
 
-function clearShadow(ctx: Canvas2D): void {
+export function clearShadow(ctx: Canvas2D): void {
   ctx.shadowColor = 'rgba(0,0,0,0)';
   ctx.shadowBlur = 0;
   ctx.shadowOffsetX = 0;

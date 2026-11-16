@@ -112,3 +112,14 @@
   flex-basis: 100%;
   color: var(--text-dim);
 }
+.p3-hl-modes {
+  display: flex;
+  width: 100%;
+}
+.p3-hl-modes button {
+  flex: 1;
+  padding: 5px 2px;
+}
+.p3-hl-hint {
+  margin: 0;
+}

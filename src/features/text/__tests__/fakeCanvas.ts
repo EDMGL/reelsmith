@@ -133,6 +133,10 @@ export class FakeContext {
   moveTo() {}
   lineTo() {}
   arcTo() {}
+  rect() {}
+  clip(...args: unknown[]) {
+    this.rec('clip', args);
+  }
 
   ops(op: string): DrawCall[] {
     return this.calls.filter((c) => c.op === op);

@@ -6,6 +6,6 @@ export { NumberField, RangeField } from './ClipInspector';
 
 /** Registers the core inspector sections ("Clip" timing for all clips, "Transform" for visual clips). */
 export function register(): void {
-  registerInspector('*', ClipInspector, { id: 'core:clip', title: 'Clip', order: 0 });
-  registerInspector(['video', 'image', 'text'], TransformInspector, { id: 'core:transform', title: 'Transform', order: 10 });
+  registerInspector('*', ClipInspector, { id: 'core:clip', title: 'Clip', order: 0, multi: true });
+  registerInspector(['video', 'image', 'text'], TransformInspector, { id: 'core:transform', title: 'Transform', order: 10, multi: true });
 }

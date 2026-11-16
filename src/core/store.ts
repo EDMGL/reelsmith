@@ -115,6 +115,11 @@ export interface EditorState {
   addAssetClip(assetId: Id, opts?: { trackId?: Id; start?: number }): Id | null;
   /** Generic update (see `ops.updateClip`). Returns false if rejected. */
   updateClip(id: Id, patch: ops.ClipPatch): boolean;
+  /**
+   * Updates several clips as ONE undo step (transaction-aware). `patch` may be a
+   * function of each clip (return null to skip it). Returns how many changed.
+   */
+  updateClips(ids: readonly Id[], patch: ops.ClipPatch | ((clip: Clip) => ops.ClipPatch | null), label?: string): number;
   removeClips(ids: Id[]): void;
   /** Moves a clip to `start` on `trackId` (default: same track). Rejected (false) on overlap. */
   moveClip(id: Id, start: number, trackId?: Id): boolean;
@@ -343,6 +348,18 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       return get().insertClip(clip, opts);
     },
     updateClip: (id, patch) => apply('Edit clip', (p) => ops.updateClip(p, id, patch)),
+    updateClips: (ids, patch, label = ids.length > 1 ? 'Edit clips' : 'Edit clip') => {
+      let changed = 0;
+      get().transact(label, () => {
+        for (const id of ids) {
+          const clip = get().project.clips[id];
+          if (!clip) continue;
+          const p = typeof patch === 'function' ? patch(clip) : patch;
+          if (p && get().updateClip(id, p)) changed++;
+        }
+      });
+      return changed;
+    },
     removeClips: (ids) => {
       apply(ids.length > 1 ? 'Delete clips' : 'Delete clip', (p) => ops.removeClips(p, ids));
     },

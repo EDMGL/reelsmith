@@ -35,6 +35,7 @@ src/
   features/subtitles/   P3 — subtitle clips/styles (renderer, panel)
   features/silence/     P4 — silence detection + "Remove silence"
   features/denoise/     noise reduction ("Audio cleanup" inspector section)
+  features/voiceover/   microphone voiceover recording ("Voiceover" panel)
   features/export/      P4 — export (toolbar action, encoder)
 ```
 
@@ -246,6 +247,26 @@ are copied untouched** (no re-encode). The result is a new asset `"<name> (clean
 (`derivedFrom` points at the source) and every clip using the file switches to it in one undo
 step. **Re-apply** always starts from the original; **Restore original** switches back.
 
+## Word-highlighted captions
+
+Subtitles panel → **Style (all subtitles)** → **Highlight**: **Color** (spoken word changes color),
+**Box** (a colored box moves from word to word) or **Karaoke** (words fill with color as they are
+spoken), plus optional **Pop** (active word grows; neighbours move apart so nothing overlaps).
+
+Auto captions use the `whisper-*_timestamped` models with `return_timestamps: 'word'`; words are
+grouped into short cues (≤ 32 chars / 4 s, new cue at pauses > 0.6 s and sentence ends,
+`wordsToCues`) and stored on the clip as `SubtitleClip.words` (relative to the clip start). Split,
+merge and start-edge edits keep the words on the audio. Cues without word timings (manual,
+SRT/VTT, edited to a different word count) get timings estimated by word length (`wordTiming.ts`).
+
+## Voiceover
+
+**Voiceover** panel (or 🎙 in the timeline toolbar): pick a microphone, press **● Record** — after an
+optional 3-2-1 countdown it records from the playhead while the timeline plays (muted by default,
+preview only). **■ Stop**, Space or the end of the timeline ends the take. The take is converted to
+WAV (MediaRecorder WebM has no seekable duration), imported as an asset and placed at the start
+time on a "Voiceover" audio track (a new "Voiceover N" track if the first is busy); one undo step.
+
 ## Auto captions (on-device Whisper)
 
 Subtitles panel → pick a model and language → **Auto captions**. Speech-to-text runs entirely in
@@ -268,6 +289,13 @@ Audio never leaves the machine.
 
 ## Keyboard shortcuts
 
+**Multi-select:** Shift/⌘-click clips, ⌘/Ctrl+A, or drag a box on empty timeline space (Shift adds
+to the selection). With several clips selected, inspector sections registered with
+`registerInspector(…, { multi: true })` are shown and receive `targets` (all selected clip ids they
+apply to; use `inspectorTargets(props)`): Clip (volume, fades), Transform, Placement and Effects
+edit every selected clip in one undo step (`store.updateClips`).
+
+
 Space play/pause · S split at playhead · Del/Backspace delete · Shift+Del ripple delete ·
-⌘/Ctrl+Z undo · ⇧⌘/Ctrl+Shift+Z or Ctrl+Y redo · ⌘/Ctrl+D duplicate · ←/→ one frame (Shift: 1 s) ·
+⌘/Ctrl+Z undo · ⇧⌘/Ctrl+Shift+Z or Ctrl+Y redo · ⌘/Ctrl+D duplicate · ⌘/Ctrl+A select all · ←/→ one frame (Shift: 1 s) ·
 Home start · +/- zoom · ⌘/Ctrl+wheel zoom at cursor · Alt while dragging toggles snapping · Esc clear selection.

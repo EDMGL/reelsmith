@@ -4,6 +4,7 @@ import {
   MAX_VOLUME,
   MIN_SPEED,
   formatTimecode,
+  inspectorTargets,
   isMediaClip,
   isVisualClip,
   useEditorStore,
@@ -102,8 +103,39 @@ function round(v: number): number {
   return Math.round(v * 1000) / 1000;
 }
 
+/**
+ * Several clips: only the settings that make sense for all of them at once
+ * (volume, fades). Timing stays per clip.
+ */
+function MultiClipInspector({ clip, project, targets }: InspectorProps & { targets: readonly string[] }) {
+  const S = useEditorStore.getState;
+  const media = targets.map((id) => project.clips[id]).filter((c) => c && isMediaClip(c));
+  const firstMedia = media[0];
+  return (
+    <fieldset className="inspector-fields">
+      {firstMedia && isMediaClip(firstMedia) && (
+        <RangeField
+          label="Volume"
+          value={firstMedia.volume}
+          min={0}
+          max={MAX_VOLUME}
+          step={0.01}
+          format={(v) => `${Math.round(v * 100)}%`}
+          onChange={(volume) => S().updateClips(media.map((c) => c!.id), { volume }, 'Volume')}
+        />
+      )}
+      <NumberField label="Fade in" value={clip.fadeIn} min={0} step={0.05} suffix="s" onCommit={(fadeIn) => S().updateClips(targets, { fadeIn }, 'Fade in')} />
+      <NumberField label="Fade out" value={clip.fadeOut} min={0} step={0.05} suffix="s" onCommit={(fadeOut) => S().updateClips(targets, { fadeOut }, 'Fade out')} />
+      <p className="muted small">Tip: a 0.05 s fade in/out on every piece softens clicks at silence cuts. Start, duration and speed are edited per clip.</p>
+    </fieldset>
+  );
+}
+
 /** Core "Clip" section: name, timing, speed, volume, fades. Applies to every clip type. */
-export function ClipInspector({ clip, track, project }: InspectorProps) {
+export function ClipInspector(props: InspectorProps) {
+  const targets = inspectorTargets(props);
+  if (targets.length > 1) return <MultiClipInspector {...props} targets={targets} />;
+  const { clip, track, project } = props;
   const update = (patch: ClipPatch) => useEditorStore.getState().updateClip(clip.id, patch);
   const locked = track.locked;
   return (
@@ -143,10 +175,14 @@ export function ClipInspector({ clip, track, project }: InspectorProps) {
  * Basic numeric transform editor for visual clips (id 'core:transform').
  * Feature packages may replace it by registering an inspector with the same id.
  */
-export function TransformInspector({ clip, track }: InspectorProps<'video' | 'image' | 'text'>) {
+export function TransformInspector(props: InspectorProps<'video' | 'image' | 'text'>) {
+  const { clip, track } = props;
   if (!isVisualClip(clip)) return null;
   const tf = clip.transform;
-  const set = (patch: Partial<Transform>) => useEditorStore.getState().updateClip(clip.id, { transform: { ...tf, ...patch } } as ClipPatch);
+  const targets = inspectorTargets(props);
+  // Only the changed fields are written, so clips keep their other transform values.
+  const set = (patch: Partial<Transform>) =>
+    useEditorStore.getState().updateClips(targets, (c) => (isVisualClip(c) ? ({ transform: { ...c.transform, ...patch } } as ClipPatch) : null), 'Transform');
   return (
     <fieldset className="inspector-fields" disabled={track.locked}>
       <RangeField label="Position X" value={tf.x} min={-0.5} max={1.5} step={0.001} format={(v) => `${Math.round(v * 100)}%`} onChange={(x) => set({ x })} />

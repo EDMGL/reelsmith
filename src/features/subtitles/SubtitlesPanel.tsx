@@ -7,8 +7,11 @@ import {
   useEditorStore,
   type Id,
   type SubtitleClip,
+  type SubtitleStyle,
+  type WordHighlight,
+  type WordHighlightMode,
 } from '../../core';
-import { Slider, TextStyleEditor, useBurstTx } from '../text/controls';
+import { ColorInput, Field, Slider, TextStyleEditor, useBurstTx } from '../text/controls';
 import {
   addCueAt,
   clipsToCues,
@@ -191,10 +194,67 @@ function Section({ title, children, defaultOpen = false }: { title: string; chil
   );
 }
 
+const HIGHLIGHT_MODES: readonly { mode: WordHighlightMode; label: string; color: string; hint: string }[] = [
+  { mode: 'none', label: 'None', color: '#FFE600', hint: 'Plain subtitles.' },
+  { mode: 'color', label: 'Color', color: '#FFE600', hint: 'The word being spoken changes color (TikTok style).' },
+  { mode: 'box', label: 'Box', color: '#7C3AED', hint: 'A colored box moves from word to word.' },
+  { mode: 'karaoke', label: 'Karaoke', color: '#22D3EE', hint: 'Words fill with color as they are spoken.' },
+];
+
+export const DEFAULT_HIGHLIGHT: WordHighlight = { mode: 'none', color: '#FFE600', pop: 1 };
+const POP_SCALE = 1.15;
+
+/** Word-by-word highlight settings of a subtitle style. */
+export function HighlightEditor({ style }: { style: SubtitleStyle }) {
+  const hl = style.highlight ?? DEFAULT_HIGHLIGHT;
+  const set = (patch: Partial<WordHighlight>) => updateSubtitleStyle(style.id, { highlight: { ...hl, ...patch } });
+  const info = HIGHLIGHT_MODES.find((m) => m.mode === hl.mode) ?? HIGHLIGHT_MODES[0]!;
+  return (
+    <>
+      <Field label="Highlight">
+        <div className="segmented p3-hl-modes" role="group" aria-label="Word highlight">
+          {HIGHLIGHT_MODES.map((m) => (
+            <button
+              key={m.mode}
+              type="button"
+              className={hl.mode === m.mode ? 'active' : ''}
+              aria-pressed={hl.mode === m.mode}
+              title={m.hint}
+              onClick={() => {
+                const wasDefault = HIGHLIGHT_MODES.some((x) => x.color.toLowerCase() === hl.color.toLowerCase());
+                set({ mode: m.mode, ...(wasDefault ? { color: m.color } : {}) });
+              }}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </Field>
+      {hl.mode !== 'none' && (
+        <>
+          <ColorInput label={hl.mode === 'box' ? 'Box color' : 'Highlight color'} value={hl.color} onChange={(color) => set({ color })} />
+          <label className="field">
+            <span className="field-label">Pop</span>
+            <span className="field-input">
+              <input type="checkbox" aria-label="Pop active word" checked={hl.pop > 1} onChange={(e) => set({ pop: e.target.checked ? POP_SCALE : 1 })} />
+              <span className="muted small">Active word grows slightly</span>
+            </span>
+          </label>
+        </>
+      )}
+      <p className="muted small p3-hl-hint">
+        {info.hint}
+        {hl.mode !== 'none' && ' Auto captions give exact word timing; other subtitles are timed by estimate.'}
+      </p>
+    </>
+  );
+}
+
 function StyleEditor() {
   const style = useEditorStore((s) => s.project.subtitleStyles[DEFAULT_SUBTITLE_STYLE_ID]) ?? defaultSubtitleStyle();
   return (
     <div className="inspector-fields p3-inspector">
+      <HighlightEditor style={style} />
       <TextStyleEditor style={style} onChange={(next) => updateSubtitleStyle(style.id, next)} />
       <Slider
         label="Bottom"
@@ -214,7 +274,7 @@ function StyleEditor() {
         format={(v) => `${Math.round(v * 100)}%`}
         onChange={(maxWidth) => updateSubtitleStyle(style.id, { maxWidth })}
       />
-      <button type="button" className="btn btn-small" onClick={() => updateSubtitleStyle(style.id, { ...defaultSubtitleStyle(), id: style.id, name: style.name })}>
+      <button type="button" className="btn btn-small" onClick={() => updateSubtitleStyle(style.id, { ...defaultSubtitleStyle(), id: style.id, name: style.name, highlight: undefined })}>
         Reset style
       </button>
     </div>

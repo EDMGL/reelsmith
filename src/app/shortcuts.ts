@@ -19,7 +19,7 @@ const ZOOM_STEP = 1.25;
 /**
  * Global keyboard shortcuts:
  * Space play/pause · S split at playhead · Del/Backspace delete · Shift+Del ripple delete ·
- * Cmd/Ctrl+Z undo · Shift+Cmd/Ctrl+Z or Cmd/Ctrl+Y redo · Cmd/Ctrl+D duplicate ·
+ * Cmd/Ctrl+Z undo · Shift+Cmd/Ctrl+Z or Cmd/Ctrl+Y redo · Cmd/Ctrl+D duplicate · Cmd/Ctrl+A select all ·
  * ←/→ one frame (Shift: one second) · Home/End · +/- zoom · Esc clear selection.
  */
 export function handleShortcut(e: KeyboardEvent): boolean {
@@ -34,6 +34,10 @@ export function handleShortcut(e: KeyboardEvent): boolean {
   }
   if (mod && key.toLowerCase() === 'y') {
     s.redo();
+    return true;
+  }
+  if (mod && key.toLowerCase() === 'a') {
+    s.selectClips(Object.values(s.project.clips).sort((a, b) => a.start - b.start).map((c) => c.id));
     return true;
   }
   if (mod && key.toLowerCase() === 'd') {

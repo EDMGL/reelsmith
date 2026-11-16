@@ -154,6 +154,17 @@ export interface TextStyle {
 }
 
 /** A shared subtitle style, referenced by `SubtitleClip.styleId`. */
+/** Word-by-word highlight of the word being spoken (TikTok / karaoke style). */
+export type WordHighlightMode = 'none' | 'color' | 'box' | 'karaoke';
+
+export interface WordHighlight {
+  mode: WordHighlightMode;
+  /** Text color of the active word ('color'), box fill ('box'), or color of spoken words ('karaoke'). */
+  color: string;
+  /** Scale of the active word (1 = no "pop"). */
+  pop: number;
+}
+
 export interface SubtitleStyle extends TextStyle {
   id: Id;
   name: string;
@@ -161,6 +172,15 @@ export interface SubtitleStyle extends TextStyle {
   bottomMargin: number;
   /** Max text block width, fraction of canvas width. */
   maxWidth: number;
+  /** Word highlight (absent = none). */
+  highlight?: WordHighlight;
+}
+
+/** Timing of one spoken word of a subtitle, seconds relative to the clip start. */
+export interface WordTiming {
+  text: string;
+  start: number;
+  end: number;
 }
 
 export interface VideoClip extends ClipBase<'video'>, MediaSourceFields {
@@ -187,6 +207,11 @@ export interface SubtitleClip extends ClipBase<'subtitle'> {
   styleId: Id;
   /** Per-clip overrides on top of the referenced style. */
   styleOverride?: Partial<TextStyle>;
+  /**
+   * Word timings (from speech recognition), relative to `start`. Used for word
+   * highlighting; when absent or not matching the text, timings are estimated.
+   */
+  words?: WordTiming[];
 }
 
 /** Discriminated union of all clip types (switch on `clip.type`). */

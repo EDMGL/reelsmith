@@ -8,10 +8,14 @@ export interface WhisperModel {
   label: string;
 }
 
-/** Multilingual models (Turkish included). Weights are cached by the browser after the first download. */
+/**
+ * Multilingual models (Turkish included). The `_timestamped` exports carry the
+ * cross-attention outputs needed for word-level timestamps (word highlighting).
+ * Weights are cached by the browser after the first download.
+ */
 export const WHISPER_MODELS: readonly WhisperModel[] = [
-  { id: 'whisper-base', repo: 'onnx-community/whisper-base', label: 'Whisper Base (fast)' },
-  { id: 'whisper-small', repo: 'onnx-community/whisper-small', label: 'Whisper Small (more accurate)' },
+  { id: 'whisper-base', repo: 'onnx-community/whisper-base_timestamped', label: 'Whisper Base (fast)' },
+  { id: 'whisper-small', repo: 'onnx-community/whisper-small_timestamped', label: 'Whisper Small (more accurate)' },
 ];
 
 export type WhisperRequest =

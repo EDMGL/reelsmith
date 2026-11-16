@@ -1,4 +1,4 @@
-import { Fragment, memo, useState, type DragEvent } from 'react';
+import { Fragment, memo, useState, type DragEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   ASSET_DRAG_MIME,
   CLIP_TEMPLATE_DRAG_MIME,
@@ -120,9 +120,11 @@ interface TrackRowProps {
   contentWidth: number;
   canDelete: boolean;
   clientXToTime: (x: number) => number;
+  /** Pointer down on empty lane space (box selection / click to seek). */
+  onLanePointerDown?: (e: ReactPointerEvent, track: Track) => void;
 }
 
-export const TrackRow = memo(function TrackRow({ track, clips, incoming, zoom, contentWidth, canDelete, clientXToTime }: TrackRowProps) {
+export const TrackRow = memo(function TrackRow({ track, clips, incoming, zoom, contentWidth, canDelete, clientXToTime, onLanePointerDown }: TrackRowProps) {
   const drag = useTimelineUi((s) => s.drag);
   const [dropHover, setDropHover] = useState(false);
   const height = TRACK_HEIGHT[track.kind] ?? 48;
@@ -136,6 +138,7 @@ export const TrackRow = memo(function TrackRow({ track, clips, incoming, zoom, c
         style={{ width: contentWidth }}
         onPointerDown={(e) => {
           if (e.button !== 0 || e.target !== e.currentTarget) return;
+          if (onLanePointerDown) return onLanePointerDown(e, track);
           const s = useEditorStore.getState();
           s.clearSelection();
           s.selectTrack(track.id);

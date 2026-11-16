@@ -101,7 +101,7 @@ export function resolveOverlaps(cues: readonly Cue[], occupied: readonly { start
     }
     if (Math.abs(s - c.start) > EPS || Math.abs(e - c.end) > EPS) trimmed++;
     // No rounding here: trimmed edges must coincide exactly with the occupant's edge.
-    const cue = { start: s, end: e, text: c.text };
+    const cue: Cue = { start: s, end: e, text: c.text, ...(c.words ? { words: c.words } : {}) };
     placed.push(cue);
     busy.push({ start: cue.start, end: cue.end });
   }

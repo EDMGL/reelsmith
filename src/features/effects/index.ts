@@ -22,5 +22,6 @@ export function register(): void {
     id: 'effects',
     title: 'Effects',
     order: 50,
+    multi: true,
   });
 }

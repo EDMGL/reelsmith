@@ -101,6 +101,29 @@ export function moveEffect(clipId: Id, effectId: Id, dir: -1 | 1): boolean {
   return setEffects(clipId, next);
 }
 
+/**
+ * Copies the effect stack of `sourceId` to every other clip in `targetIds`
+ * (one undo step; merges into an open transaction, e.g. a slider drag).
+ */
+export function syncEffects(sourceId: Id, targetIds: readonly Id[]): number {
+  const src = S().project.clips[sourceId];
+  if (!supportsEffects(src)) return 0;
+  const others = targetIds.filter((id) => id !== sourceId);
+  if (others.length === 0) return 0;
+  return editClips('Copy effects', others, (c) => (sameEffects(c.effects, src.effects) ? null : src.effects.map((e) => ({ ...e, params: { ...e.params } }))));
+}
+
+/** Same effect types, order, params and enabled flags (ids ignored). */
+export function sameEffects(a: readonly EffectInstance[], b: readonly EffectInstance[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((e, i) => {
+    const f = b[i]!;
+    if (e.effectType !== f.effectType || e.enabled !== f.enabled) return false;
+    const ka = Object.keys(e.params);
+    return ka.length === Object.keys(f.params).length && ka.every((k) => e.params[k] === f.params[k]);
+  });
+}
+
 export function clearEffects(clipId: Id): boolean {
   return setEffects(clipId, []);
 }

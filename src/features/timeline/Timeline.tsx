@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import {
   Slot,
   getProjectDuration,
@@ -10,9 +10,10 @@ import {
   type Clip,
   type Id,
   type TimelineOverlayProps,
+  type Track,
   type TrackLayout,
 } from '../../core';
-import { contentWidthPx, displayTracks } from './geometry';
+import { clipsInBox, contentWidthPx, displayTracks } from './geometry';
 import { startScrub } from './interactions';
 import { Ruler } from './Ruler';
 import { TimelineToolbar } from './TimelineToolbar';
@@ -75,6 +76,47 @@ export function Timeline({ toolbarExtras }: { toolbarExtras?: ReactNode }) {
     });
   }, [tracks]);
   const rowsHeight = layout.reduce((s, l) => s + l.height, 0);
+
+  // Box selection: drag on empty lane space. A click without dragging keeps the
+  // old behaviour (clear selection, select the track, move the playhead).
+  const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  const onLanePointerDown = useCallback((e: ReactPointerEvent, track: Track) => {
+    const rows = rowsRef.current;
+    if (!rows) return;
+    const toLocal = (cx: number, cy: number) => {
+      const r = rows.getBoundingClientRect();
+      return { x: cx - r.left - HEADER_WIDTH, y: cy - r.top };
+    };
+    const start = toLocal(e.clientX, e.clientY);
+    const s0 = useEditorStore.getState();
+    const base = e.shiftKey || e.metaKey || e.ctrlKey ? s0.selectedClipIds : [];
+    let dragging = false;
+    const onMove = (ev: PointerEvent) => {
+      const p = toLocal(ev.clientX, ev.clientY);
+      if (!dragging && Math.hypot(p.x - start.x, p.y - start.y) < 4) return;
+      dragging = true;
+      setBox({ x0: start.x, y0: start.y, x1: p.x, y1: p.y });
+      const s = useEditorStore.getState();
+      const hit = clipsInBox(s.project, layoutRef.current, pxToTime(start.x, s.zoom), pxToTime(p.x, s.zoom), start.y, p.y);
+      s.selectClips([...new Set([...base, ...hit])]);
+    };
+    const onUp = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      setBox(null);
+      if (dragging) return;
+      const s = useEditorStore.getState();
+      s.clearSelection();
+      s.selectTrack(track.id);
+      s.setCurrentTime(Math.max(0, pxToTime(toLocal(ev.clientX, ev.clientY).x, s.zoom)));
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  }, []);
 
   const clientXToTime = useCallback(
     (clientX: number) => {
@@ -169,6 +211,7 @@ export function Timeline({ toolbarExtras }: { toolbarExtras?: ReactNode }) {
                 contentWidth={contentWidth}
                 canDelete={tracks.length > 1}
                 clientXToTime={clientXToTime}
+                onLanePointerDown={onLanePointerDown}
               />
             ))}
             <div
@@ -190,6 +233,18 @@ export function Timeline({ toolbarExtras }: { toolbarExtras?: ReactNode }) {
               {Object.keys(project.clips).length === 0 && <span>Drag media here, or press + on an item in the media library</span>}
             </div>
             <Overlays {...overlayProps} />
+ {box && (
+              <div
+                className="select-box"
+                data-testid="select-box"
+                style={{
+                  left: HEADER_WIDTH + Math.min(box.x0, box.x1),
+                  top: Math.min(box.y0, box.y1),
+                  width: Math.abs(box.x1 - box.x0),
+                  height: Math.abs(box.y1 - box.y0),
+                }}
+              />
+            )}
             {snapLine !== null && <div className="snap-line" style={{ left: HEADER_WIDTH + snapLine * zoom }} />}
             <div className="playhead-line" style={{ left: HEADER_WIDTH + currentTime * zoom }} />
           </div>

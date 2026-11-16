@@ -20,6 +20,7 @@ import type {
   Track,
   TrackKind,
   Transform,
+  WordTiming,
   VideoClip,
   VisualClip,
 } from './types';
@@ -154,8 +155,9 @@ export function createTextClip(opts: ClipCommon & { text?: string; duration?: nu
   };
 }
 
-export function createSubtitleClip(opts: ClipCommon & { text: string; duration: number; styleId?: Id }): SubtitleClip {
+export function createSubtitleClip(opts: ClipCommon & { text: string; duration: number; styleId?: Id; words?: WordTiming[] }): SubtitleClip {
   return {
+    ...(opts.words && opts.words.length > 0 ? { words: opts.words } : {}),
     id: createId('clip'),
     type: 'subtitle',
     trackId: opts.trackId,

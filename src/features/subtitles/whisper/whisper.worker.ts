@@ -13,7 +13,7 @@ import ortWasmUrl from 'onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm?url
 import ortMjsUrl from 'onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs?url';
 import type { Cue } from '../formats';
 import type { WhisperRequest, WhisperResponse } from './protocol';
-import { levelDb, normalizeCues, planChunks, segmentsToCues, type WhisperSegment } from './segmenting';
+import { levelDb, normalizeCues, planChunks, segmentsToCues, wordsToCues, type WhisperSegment } from './segmenting';
 
 const onnxWasm = env.backends.onnx?.wasm;
 if (onnxWasm) onnxWasm.wasmPaths = { wasm: ortWasmUrl, mjs: ortMjsUrl };
@@ -102,22 +102,37 @@ async function transcribe(req: Extract<WhisperRequest, { type: 'transcribe' }>):
     const total = samples.length || 1;
     const cues: Cue[] = [];
     const accel = device === 'webgpu' ? 'GPU' : 'CPU';
+    let wordTimestamps = true;
     post({ type: 'progress', id, fraction: 0 });
     for (const [i, ch] of chunks.entries()) {
       check();
       post({ type: 'status', id, message: `Transcribing on ${accel}… chunk ${i + 1}/${chunks.length}` });
       if (levelDb(samples, ch.start, ch.end) > SILENT_CHUNK_DB) {
-        const out = (await asr(samples.subarray(ch.start, ch.end), {
-          language,
-          task: 'transcribe',
-          return_timestamps: true,
-        })) as { text: string; chunks?: { timestamp: [number, number | null]; text: string }[] };
-        const segments: WhisperSegment[] = (out.chunks ?? [{ timestamp: [0, null], text: out.text }]).map((c) => ({
-          start: c.timestamp[0] ?? 0,
-          end: c.timestamp[1],
-          text: c.text,
-        }));
-        cues.push(...segmentsToCues(segments, ch.start / sampleRate, ch.end / sampleRate));
+        const audio = samples.subarray(ch.start, ch.end);
+        const t0 = ch.start / sampleRate;
+        const t1 = ch.end / sampleRate;
+        type Out = { text: string; chunks?: { timestamp: [number | null, number | null]; text: string }[] };
+        let words: Out | null = null;
+        if (wordTimestamps) {
+          try {
+            words = (await asr(audio, { language, task: 'transcribe', return_timestamps: 'word' })) as Out;
+          } catch (err) {
+            // Model without cross-attention outputs: fall back to segment timestamps from now on.
+            console.warn('[whisper] word timestamps unavailable, using segments', err);
+            wordTimestamps = false;
+          }
+        }
+        if (words?.chunks?.length) {
+          cues.push(...wordsToCues(words.chunks.map((c) => ({ text: c.text, start: c.timestamp[0] ?? 0, end: c.timestamp[1] })), t0, t1));
+        } else {
+          const out = (await asr(audio, { language, task: 'transcribe', return_timestamps: true })) as Out;
+          const segments: WhisperSegment[] = (out.chunks ?? [{ timestamp: [0, null], text: out.text }]).map((c) => ({
+            start: c.timestamp[0] ?? 0,
+            end: c.timestamp[1],
+            text: c.text,
+          }));
+          cues.push(...segmentsToCues(segments, t0, t1));
+        }
       }
       post({ type: 'progress', id, fraction: ch.end / total });
     }

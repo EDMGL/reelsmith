@@ -55,6 +55,8 @@ export interface PlaybackEngine {
    * honouring volume, fades, speed, muted tracks) for the given range.
    */
   mixAudio(opts: AudioMixOptions): Promise<AudioBuffer>;
+  /** Silences preview playback (e.g. while recording a voiceover). Export is unaffected. */
+  setPreviewMuted?(muted: boolean): void;
   /** Releases decoders, audio contexts, listeners. */
   dispose(): void;
 }

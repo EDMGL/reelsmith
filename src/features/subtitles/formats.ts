@@ -13,6 +13,8 @@ export interface Cue {
   end: number;
   /** Plain text; lines separated by `\n`. */
   text: string;
+  /** Optional word timings, ABSOLUTE seconds (same timebase as start/end). Not written to SRT/VTT. */
+  words?: { text: string; start: number; end: number }[];
 }
 
 export interface ParseResult {

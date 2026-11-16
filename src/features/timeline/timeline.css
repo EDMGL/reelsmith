@@ -355,3 +355,11 @@
   position: absolute;
   inset: 0;
 }
+.select-box {
+  position: absolute;
+  z-index: 6;
+  pointer-events: none;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-radius: 2px;
+}
