@@ -15,7 +15,9 @@
  *   export mode or while paused) and then composites synchronously.
  */
 import {
+  STREAMING_DECODE_BYTES,
   clipGainAt,
+  decodeMediaAudio,
   getProjectDuration,
   getAssetBlob,
   isMediaClip,
@@ -476,8 +478,15 @@ export class ErdemcutEngine implements PlaybackEngine {
       p = (async () => {
         const blob = await this.deps.loadBlob(asset);
         if (!blob) return null;
-        const data = await blob.arrayBuffer();
-        return await ctx.decodeAudioData(data);
+        if (blob.size <= STREAMING_DECODE_BYTES) {
+          try {
+            return await ctx.decodeAudioData(await blob.arrayBuffer());
+          } catch {
+            /* try the streaming decoder below */
+          }
+        }
+        // Large files (> 2 GB cannot be read at once) or containers Web Audio can't parse.
+        return await decodeMediaAudio(blob, { sampleRate: ctx.sampleRate });
       })().catch(() => null);
       this.decoded.set(key, p);
       // Keep the cache small: decoded PCM is large.

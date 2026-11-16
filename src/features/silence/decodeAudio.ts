@@ -3,8 +3,7 @@
  * Uses an OfflineAudioContext at ANALYSIS_SAMPLE_RATE (plenty for RMS levels,
  * a third of the memory of 48 kHz). A few recent results are cached per asset.
  */
-import { getAssetBlob, type MediaAsset } from '../../core';
-import { downmix } from './analysis';
+import { decodeMediaAudio, getAssetBlob, type MediaAsset } from '../../core';
 
 export const ANALYSIS_SAMPLE_RATE = 16000;
 const CACHE_SIZE = 4;
@@ -30,17 +29,15 @@ async function loadBlob(asset: MediaAsset): Promise<Blob> {
 
 async function decode(asset: MediaAsset): Promise<MonoAudio> {
   const blob = await loadBlob(asset);
-  const data = await blob.arrayBuffer();
-  const ctx = new OfflineAudioContext(1, 1, ANALYSIS_SAMPLE_RATE);
-  let buffer: AudioBuffer;
+  // Streams large files (multi-GB phone videos) instead of reading them whole.
+  let buffer: AudioBuffer | null;
   try {
-    buffer = await ctx.decodeAudioData(data);
-  } catch {
-    throw new Error(`Could not decode the audio of "${asset.name}" (no audio track or unsupported codec)`);
+    buffer = await decodeMediaAudio(blob, { sampleRate: ANALYSIS_SAMPLE_RATE, channels: 1 });
+  } catch (e) {
+    throw new Error(`Could not decode the audio of "${asset.name}" (${e instanceof Error ? e.message : 'unsupported codec'})`);
   }
-  const channels: Float32Array[] = [];
-  for (let c = 0; c < buffer.numberOfChannels; c++) channels.push(buffer.getChannelData(c));
-  return { samples: downmix(channels), sampleRate: buffer.sampleRate };
+  if (!buffer) throw new Error(`"${asset.name}" has no audio track`);
+  return { samples: buffer.getChannelData(0), sampleRate: buffer.sampleRate };
 }
 
 export function decodeAssetMono(asset: MediaAsset): Promise<MonoAudio> {

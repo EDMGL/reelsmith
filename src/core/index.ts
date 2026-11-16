@@ -16,6 +16,7 @@ export * from './render';
 export { Slot } from './Slot';
 export { PreviewOverlayLayer, type PreviewOverlayLayerProps } from './PreviewOverlayLayer';
 export * from './engine';
+export * from './audioDecode';
 export * from './store';
 export {
   PROJECT_STORAGE_KEY,

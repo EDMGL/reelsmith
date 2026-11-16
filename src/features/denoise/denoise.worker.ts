@@ -18,6 +18,7 @@ import {
   MATROSKA,
   Mp4OutputFormat,
   Output,
+  StreamTarget,
   WavOutputFormat,
   WEBM,
   WebMOutputFormat,
@@ -35,6 +36,57 @@ const cancelled = new Set<number>();
 let queue: Promise<void> = Promise.resolve();
 
 class Aborted extends Error {}
+
+/** Outputs larger than this are written to disk (OPFS): an in-memory ArrayBuffer cannot exceed ~2 GB. */
+const DISK_OUTPUT_BYTES = 1024 * 1024 * 1024;
+const OPFS_DIR = 'denoise-output';
+
+interface SyncAccessHandle {
+  write(data: Uint8Array, opts: { at: number }): number;
+  flush(): void;
+  close(): void;
+}
+
+/** Output target: memory for normal files, an OPFS file for huge ones (phone videos are often several GB). */
+async function makeTarget(inputSize: number): Promise<{ target: BufferTarget | StreamTarget; finish: () => Promise<Blob | null> }> {
+  const storage = (navigator as Navigator & { storage?: { getDirectory?: () => Promise<FileSystemDirectoryHandle> } }).storage;
+  if (inputSize < DISK_OUTPUT_BYTES || !storage?.getDirectory) {
+    const target = new BufferTarget();
+    return { target, finish: async () => (target.buffer ? new Blob([target.buffer]) : null) };
+  }
+  const root = await storage.getDirectory();
+  const dir = await root.getDirectoryHandle(OPFS_DIR, { create: true });
+  await cleanupOldOutputs(dir);
+  const handle = await dir.getFileHandle(`${Date.now()}-${Math.random().toString(36).slice(2)}`, { create: true });
+  const access = await (handle as FileSystemFileHandle & { createSyncAccessHandle(): Promise<SyncAccessHandle> }).createSyncAccessHandle();
+  const writable = new WritableStream<{ type: 'write'; data: Uint8Array; position: number }>({
+    write(chunk) {
+      access.write(chunk.data, { at: chunk.position });
+    },
+  });
+  return {
+    target: new StreamTarget(writable, { chunked: true }),
+    finish: async () => {
+      access.flush();
+      access.close();
+      return handle.getFile(); // disk-backed: no 2 GB limit
+    },
+  };
+}
+
+/** Old outputs are copies already saved into the project storage (IndexedDB): drop them after a day. */
+async function cleanupOldOutputs(dir: FileSystemDirectoryHandle): Promise<void> {
+  const cutoff = Date.now() - 24 * 3600 * 1000;
+  try {
+    for await (const [name, entry] of (dir as unknown as { entries(): AsyncIterable<[string, FileSystemHandle]> }).entries()) {
+      if (entry.kind !== 'file') continue;
+      const f = await (entry as FileSystemFileHandle).getFile();
+      if (f.lastModified < cutoff) await dir.removeEntry(name).catch(() => undefined);
+    }
+  } catch {
+    /* best effort */
+  }
+}
 
 function concat(parts: Float32Array[], total: number): Float32Array {
   const out = new Float32Array(total);
@@ -141,7 +193,8 @@ async function run(req: DenoiseRequest): Promise<void> {
     if (!video) format = new WavOutputFormat();
     else if (inFormat === WEBM || inFormat === MATROSKA) format = new WebMOutputFormat();
     else format = new Mp4OutputFormat({ fastStart: 'in-memory' });
-    const output = new Output({ format, target: new BufferTarget() });
+    const out = await makeTarget(blob.size);
+    const output = new Output({ format, target: out.target });
     const read = makeReader(cleaned, sampleRate, t0);
     const conversion = await Conversion.init({
       input,
@@ -149,6 +202,9 @@ async function run(req: DenoiseRequest): Promise<void> {
       video: video ? {} : { discard: true },
       audio: (t) => (t === track ? { forceTranscode: true, process: read, ...(video ? {} : { codec: 'pcm-s16' as const }) } : { discard: true }),
     });
+    // Never hand back a "video" without its picture: if the video track cannot be carried over, stop.
+    const lostVideo = video ? conversion.discardedTracks.find((d) => d.track === video) : undefined;
+    if (lostVideo) throw new Error(`The video track could not be copied (${lostVideo.reason.replace(/_/g, ' ')}); the original file is unchanged.`);
     if (!conversion.isValid) {
       throw new Error(`Cannot write the cleaned file: ${conversion.discardedTracks.map((d) => d.reason).join(', ') || 'unsupported format'}`);
     }
@@ -158,9 +214,9 @@ async function run(req: DenoiseRequest): Promise<void> {
     };
     await conversion.execute();
     check();
-    const buffer = (output.target as BufferTarget).buffer;
-    if (!buffer) throw new Error('Writing the cleaned file failed.');
-    post({ type: 'result', id, blob: new Blob([buffer], { type: format.mimeType }), extension: format.fileExtension, hasVideo: !!video });
+    const written = await out.finish();
+    if (!written) throw new Error('Writing the cleaned file failed.');
+    post({ type: 'result', id, blob: new Blob([written], { type: format.mimeType }), extension: format.fileExtension, hasVideo: !!video });
   } catch (err) {
     const aborted = err instanceof Aborted || cancelled.has(id) || (err instanceof Error && (err.name === 'AbortError' || err.name === 'ConversionCanceledError'));
     post({ type: 'error', id, message: aborted ? 'aborted' : err instanceof Error ? err.message : String(err), aborted });

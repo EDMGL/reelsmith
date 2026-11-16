@@ -2,7 +2,7 @@
  * Media import: detects kind, probes metadata, makes thumbnails and (best
  * effort) audio waveforms. Browser-only (uses media elements, canvas, Web Audio).
  */
-import { createId, putAssetBlob, useEditorStore, type AssetKind, type MediaAsset } from '../../core';
+import { createId, decodeMediaAudio, putAssetBlob, useEditorStore, type AssetKind, type MediaAsset } from '../../core';
 
 const EXT_KIND: Record<string, AssetKind> = {
   mp4: 'video', m4v: 'video', mov: 'video', webm: 'video', mkv: 'video', ogv: 'video',
@@ -119,11 +119,11 @@ async function probeImage(url: string): Promise<Probe> {
  * decodable audio; `undefined` if decoding was skipped (file too large / no Web Audio).
  */
 export async function computeWaveform(blob: Blob, points = WAVEFORM_POINTS): Promise<number[] | null | undefined> {
-  if (blob.size > MAX_DECODE_BYTES || typeof OfflineAudioContext === 'undefined') return undefined;
+  if (typeof OfflineAudioContext === 'undefined') return undefined;
   try {
-    const buf = await blob.arrayBuffer();
-    const ctx = new OfflineAudioContext(1, 1, 44100);
-    const audio = await ctx.decodeAudioData(buf);
+    // Low rate is plenty for peaks; large files are streamed (see decodeMediaAudio).
+    const audio = await decodeMediaAudio(blob, { sampleRate: blob.size > MAX_DECODE_BYTES ? 8000 : 44100, channels: 1 });
+    if (!audio) return null;
     const data = audio.getChannelData(0);
     const bucket = Math.max(1, Math.floor(data.length / points));
     const peaks: number[] = [];
