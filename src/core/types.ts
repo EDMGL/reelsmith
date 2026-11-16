@@ -183,8 +183,34 @@ export interface WordTiming {
   end: number;
 }
 
+/** Animated zoom / pan inside a clip's frame ("Motion"). */
+export type MotionPreset = 'none' | 'zoom-in' | 'zoom-out' | 'punch-in' | 'pan-left' | 'pan-right';
+
+export interface ClipMotion {
+  preset: MotionPreset;
+  /** Zoom factor at full strength (1.2 = 20% closer). */
+  amount: number;
+  /** Seconds the move takes from the clip start; 0 = the whole clip. */
+  duration: number;
+  /** Point the zoom moves toward, as a fraction of the picture (0.5/0.5 = center). */
+  focusX: number;
+  focusY: number;
+}
+
+/** Mask of a picture clip (e.g. a round webcam bubble). */
+export interface ClipShape {
+  kind: 'rect' | 'rounded' | 'circle';
+  /** Corner radius for 'rounded', fraction of the shorter side (0..0.5). */
+  radius: number;
+  /** Outline width in project px (0 = none) and color. */
+  border: number;
+  borderColor: string;
+}
+
 export interface VideoClip extends ClipBase<'video'>, MediaSourceFields {
   transform: Transform;
+  motion?: ClipMotion;
+  shape?: ClipShape;
 }
 
 export interface AudioClip extends ClipBase<'audio'>, MediaSourceFields {}
@@ -193,6 +219,8 @@ export interface AudioClip extends ClipBase<'audio'>, MediaSourceFields {}
 export interface ImageClip extends ClipBase<'image'> {
   assetId: Id;
   transform: Transform;
+  motion?: ClipMotion;
+  shape?: ClipShape;
 }
 
 export interface TextClip extends ClipBase<'text'> {

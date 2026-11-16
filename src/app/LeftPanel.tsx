@@ -8,7 +8,7 @@ export function LeftPanel() {
   if (!active) return <div className="empty-hint">No panels registered.</div>;
   return (
     <div className="left-panel">
-      <nav className="tabs" role="tablist" aria-label="Panels">
+      <nav className="tabs" role="tablist" aria-label="Panels" aria-orientation="vertical">
         {panels.map((p) => (
           <button
             key={p.id}

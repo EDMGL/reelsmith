@@ -123,9 +123,12 @@ export function TopBar() {
     <header className="topbar">
       <div className="brand" aria-label="Erdemcut">
         <span className="brand-mark" aria-hidden>
-          ◆
+          <svg viewBox="0 0 16 16" fill="none">
+            <path d="M5 3.2v9.6L12.6 8z" fill="#fff" />
+            <path d="M2.5 5.5h2M2.5 10.5h2" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" opacity="0.75" />
+          </svg>
         </span>
-        Erdemcut
+        <span className="brand-name">Erdemcut</span>
       </div>
       <ProjectName />
       <div className="topbar-group">

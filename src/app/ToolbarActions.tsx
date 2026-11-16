@@ -7,6 +7,7 @@ function ActionButton({ action }: { action: ToolbarAction }) {
     <button
       type="button"
       className={action.variant === 'primary' ? 'btn btn-primary' : 'btn'}
+      data-action={action.id}
       title={action.title ?? action.label}
       disabled={!enabled}
       onClick={() => {

@@ -133,6 +133,7 @@ export class FakeContext {
   moveTo() {}
   lineTo() {}
   arcTo() {}
+  arc() {}
   rect() {}
   clip(...args: unknown[]) {
     this.rec('clip', args);

@@ -1,0 +1,53 @@
+.mo-presets {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.mo-preset {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 7px 4px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.mo-preset:hover {
+  color: var(--text);
+  border-color: var(--border-strong, var(--border));
+}
+.mo-preset.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft, var(--surface-3));
+}
+.mo-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+.mo-focus {
+  display: grid;
+  grid-template-columns: repeat(3, 18px);
+  gap: 4px;
+}
+.mo-focus button {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  cursor: pointer;
+  padding: 0;
+}
+.mo-focus button.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.mo-alt {
+  width: 100%;
+}

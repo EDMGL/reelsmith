@@ -7,8 +7,9 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 10px;
+  padding: 7px 10px;
   border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent);
   flex: none;
   overflow-x: auto;
 }
@@ -92,6 +93,7 @@
   height: 14px;
   margin-left: -6px;
   background: var(--accent);
+  filter: drop-shadow(0 0 4px rgba(46, 230, 192, 0.7));
   clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%);
   cursor: ew-resize;
   z-index: 3;
@@ -202,24 +204,39 @@
 /* clips */
 .clip {
   position: absolute;
-  top: 3px;
-  bottom: 3px;
-  border-radius: 5px;
+  top: 4px;
+  bottom: 4px;
+  border-radius: 8px;
   overflow: hidden;
   cursor: grab;
   background-color: var(--video);
   background-size: auto 100%;
   background-repeat: repeat-x;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   color: #fff;
   touch-action: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  transition: box-shadow 0.15s, filter 0.15s;
+}
+.clip::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 45%, rgba(0, 0, 0, 0.12));
+  pointer-events: none;
+}
+.clip:hover {
+  filter: brightness(1.08);
 }
 .clip-image {
   background-color: var(--image);
 }
 .clip-audio {
-  background-color: #17442f;
+  background-color: #123b2b;
+  background-image: linear-gradient(180deg, #17503a, #0f3325);
   color: #7ff0b8;
+  border-color: rgba(127, 240, 184, 0.22);
 }
 .clip-text {
   background-color: var(--text-clip);
@@ -229,7 +246,10 @@
 }
 .clip.selected {
   border: 2px solid #fff;
-  box-shadow: 0 0 0 1px var(--accent);
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 0 18px -2px rgba(46, 230, 192, 0.55),
+    0 4px 12px rgba(0, 0, 0, 0.45);
   z-index: 2;
 }
 .clip.locked {
@@ -339,6 +359,7 @@
 }
 .playhead-line {
   background: var(--accent);
+  box-shadow: 0 0 6px rgba(46, 230, 192, 0.8);
   z-index: 5;
 }
 .snap-line {
@@ -362,4 +383,11 @@
   border: 1px solid var(--accent);
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   border-radius: 2px;
+}
+
+.track-row:hover .track-header {
+  background: var(--surface-2);
+}
+.select-box {
+  border-radius: 4px;
 }

@@ -36,6 +36,8 @@ src/
   features/silence/     P4 — silence detection + "Remove silence"
   features/denoise/     noise reduction ("Audio cleanup" inspector section)
   features/voiceover/   microphone voiceover recording ("Voiceover" panel)
+  features/motion/      zoom & motion (punch-in, zoom in/out, pans), jump-cut alternate zooms
+  features/recorder/    screen + camera + mic recorder ("Record" panel)
   features/export/      P4 — export (toolbar action, encoder)
 ```
 
@@ -246,6 +248,26 @@ Runs in a worker: mediabunny decodes the audio, the cleaned PCM is re-encoded wh
 are copied untouched** (no re-encode). The result is a new asset `"<name> (clean).<ext>"`
 (`derivedFrom` points at the source) and every clip using the file switches to it in one undo
 step. **Re-apply** always starts from the original; **Restore original** switches back.
+
+## Zoom & motion
+
+Select a video/image clip → inspector **Zoom & motion**: None / Zoom in / Zoom out / Punch-in /
+Pan ← / Pan →, with Amount, Speed (whole clip or N seconds) and a 3×3 focus picker. The zoom is
+applied inside the clip's frame around the focus point (`motionAt` / `drawPicture` in
+`core/render.ts`), so the picture always covers its frame. **Punch-in** in the timeline toolbar
+splits at the playhead and zooms the part after it. With several clips selected, **Alternate
+punch-in** gives every second clip (in time order) a punch-in — the classic jump-cut look after
+silence removal. Clips also have a **Shape** (rect / rounded / circle mask + outline) under Placement.
+
+## Screen + camera recording
+
+**Record** panel (or **⏺ Record** in the top bar): toggle Screen / Camera / Mic, pick the camera
+bubble's shape, size and corner, then **Start recording** (optional countdown). Screen and camera
+are recorded as separate files started together; the mic goes with the camera take (or is mixed
+into the screen take when there is no camera; tab/system audio stays with the screen). On stop
+(button, or the browser's "Stop sharing") both files are remuxed without re-encoding (MediaRecorder
+WebM has no duration/cues), imported and placed at the playhead: screen on a video track, camera as
+a bubble on an overlay track — one undo step. An empty project switches to 16:9 for a landscape screen.
 
 ## Word-highlighted captions
 
