@@ -1,0 +1,87 @@
+import {
+  Slot,
+  formatDuration,
+  getProjectDuration,
+  inspectorRegistry,
+  selectSingleSelectedClip,
+  useEditorStore,
+  useRegistry,
+  type InspectorProps,
+} from '../core';
+
+function ProjectInfo() {
+  const project = useEditorStore((s) => s.project);
+  const setBg = useEditorStore((s) => s.setBackgroundColor);
+  const setFps = useEditorStore((s) => s.setFps);
+  return (
+    <div className="inspector-section">
+      <h3>Project</h3>
+      <dl className="kv">
+        <dt>Canvas</dt>
+        <dd>
+          {project.width} × {project.height}
+        </dd>
+        <dt>Duration</dt>
+        <dd>{formatDuration(getProjectDuration(project))}</dd>
+        <dt>Clips</dt>
+        <dd>{Object.keys(project.clips).length}</dd>
+        <dt>
+          <label htmlFor="proj-fps">Frame rate</label>
+        </dt>
+        <dd>
+          <select id="proj-fps" value={project.fps} onChange={(e) => setFps(Number(e.target.value))}>
+            {[24, 25, 30, 50, 60].map((f) => (
+              <option key={f} value={f}>
+                {f} fps
+              </option>
+            ))}
+            {![24, 25, 30, 50, 60].includes(project.fps) && <option value={project.fps}>{project.fps} fps</option>}
+          </select>
+        </dd>
+        <dt>
+          <label htmlFor="proj-bg">Background</label>
+        </dt>
+        <dd>
+          <input id="proj-bg" type="color" value={project.backgroundColor} onChange={(e) => setBg(e.target.value)} />
+        </dd>
+      </dl>
+      <p className="muted small">Select a clip on the timeline to edit its properties.</p>
+    </div>
+  );
+}
+
+/** Right panel: stacked inspector sections registered for the selected clip's type. */
+export function InspectorPanel() {
+  const clip = useEditorStore(selectSingleSelectedClip);
+  const count = useEditorStore((s) => s.selectedClipIds.length);
+  const project = useEditorStore((s) => s.project);
+  const sections = useRegistry(inspectorRegistry);
+  if (!clip) {
+    return (
+      <div className="inspector">
+        {count > 1 ? (
+          <div className="inspector-section">
+            <h3>{count} clips selected</h3>
+            <p className="muted small">Move, delete or duplicate them together.</p>
+          </div>
+        ) : (
+          <ProjectInfo />
+        )}
+      </div>
+    );
+  }
+  const track = project.tracks.find((t) => t.id === clip.trackId)!;
+  const matching = sections.filter((d) => d.clipTypes === '*' || d.clipTypes.includes(clip.type));
+  const props: InspectorProps = { clip, track, project };
+  return (
+    <div className="inspector">
+      {matching.length === 0 && <p className="muted small">No inspector for {clip.type} clips.</p>}
+      {matching.map((d) => (
+        <section key={d.id} className="inspector-section">
+          <h3>{d.title}</h3>
+          <Slot name={d.id} component={d.component} props={props} />
+        </section>
+      ))}
+    </div>
+  );
+}

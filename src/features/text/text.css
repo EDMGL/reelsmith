@@ -1,0 +1,87 @@
+/* P3 shared styles (text, overlays, subtitles). Prefixed p3- to avoid collisions. */
+.p3-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+}
+.p3-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 10px;
+}
+.p3-hint {
+  margin: 0 10px 8px;
+}
+.p3-error {
+  color: var(--danger);
+  margin: 2px 0;
+}
+.p3-preset-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0 10px 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 8px;
+}
+.p3-preset {
+  width: 100%;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  background: #0b0c10;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  overflow: hidden;
+  font-size: 18px;
+}
+.p3-preset:hover {
+  border-color: var(--accent);
+}
+.p3-preset-sample {
+  max-width: 95%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.p3-textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 56px;
+  user-select: text;
+}
+.p3-check,
+.p3-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.p3-toggle {
+  margin-top: 4px;
+  color: var(--text);
+}
+.p3-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+}
+.p3-inspector input[type='color'] {
+  width: 32px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  background: none;
+  flex: none;
+}
+.p3-inspector select {
+  min-width: 0;
+}

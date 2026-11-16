@@ -1,0 +1,188 @@
+/**
+ * Autosave / restore.
+ * - Project JSON (without blobs/objectURLs) -> localStorage key `PROJECT_STORAGE_KEY`.
+ * - Asset blobs -> IndexedDB database `reelsmith`, object store `assets` (key = asset id).
+ * On restore, blobs are loaded and fresh object URLs created; assets whose blob
+ * is gone get `status: 'missing'`.
+ */
+import { DEFAULT_SUBTITLE_STYLE_ID, defaultSubtitleStyle } from './model';
+import { useEditorStore } from './store';
+import type { MediaAsset, Project } from './types';
+
+export const PROJECT_STORAGE_KEY = 'reelsmith:project:v1';
+const DB_NAME = 'reelsmith';
+const STORE = 'assets';
+
+export type SerializedAsset = Omit<MediaAsset, 'objectURL' | 'blob'>;
+export type SerializedProject = Omit<Project, 'assets'> & { assets: Record<string, SerializedAsset> };
+
+/** Strips runtime-only fields so the project can be JSON-stringified. */
+export function serializeProject(project: Project): SerializedProject {
+  const assets: Record<string, SerializedAsset> = {};
+  for (const [id, a] of Object.entries(project.assets)) {
+    const { objectURL: _u, blob: _b, ...rest } = a;
+    assets[id] = rest;
+  }
+  return { ...project, assets };
+}
+
+/**
+ * Rebuilds a Project from JSON. `blobs` maps asset id -> Blob (missing ones
+ * get status 'missing'). `makeURL` defaults to URL.createObjectURL.
+ * Returns null if the data is not a recognizable project.
+ */
+export function deserializeProject(
+  data: unknown,
+  blobs: Map<string, Blob>,
+  makeURL: (b: Blob) => string = (b) => URL.createObjectURL(b),
+): Project | null {
+  if (!data || typeof data !== 'object') return null;
+  const d = data as Partial<SerializedProject>;
+  if (d.version !== 1 || !Array.isArray(d.tracks) || typeof d.clips !== 'object' || !d.clips) return null;
+  const assets: Record<string, MediaAsset> = {};
+  for (const [id, a] of Object.entries(d.assets ?? {})) {
+    const blob = blobs.get(id);
+    assets[id] = blob ? { ...a, blob, objectURL: makeURL(blob), status: 'ready' } : { ...a, objectURL: '', status: 'missing' };
+  }
+  const subtitleStyles = { [DEFAULT_SUBTITLE_STYLE_ID]: defaultSubtitleStyle(), ...(d.subtitleStyles ?? {}) };
+  return { ...(d as SerializedProject), assets, subtitleStyles };
+}
+
+// ---------------------------------------------------------------------------
+// IndexedDB blob storage
+// ---------------------------------------------------------------------------
+
+let dbPromise: Promise<IDBDatabase> | null = null;
+
+function openDb(): Promise<IDBDatabase> {
+  if (typeof indexedDB === 'undefined') return Promise.reject(new Error('IndexedDB unavailable'));
+  dbPromise ??= new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return dbPromise;
+}
+
+function reqToPromise<T>(req: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function putAssetBlob(id: string, blob: Blob): Promise<void> {
+  const db = await openDb();
+  await reqToPromise(db.transaction(STORE, 'readwrite').objectStore(STORE).put(blob, id));
+}
+
+export async function getAssetBlob(id: string): Promise<Blob | undefined> {
+  const db = await openDb();
+  return (await reqToPromise(db.transaction(STORE, 'readonly').objectStore(STORE).get(id))) as Blob | undefined;
+}
+
+export async function deleteAssetBlob(id: string): Promise<void> {
+  const db = await openDb();
+  await reqToPromise(db.transaction(STORE, 'readwrite').objectStore(STORE).delete(id));
+}
+
+export async function listAssetBlobIds(): Promise<string[]> {
+  const db = await openDb();
+  return (await reqToPromise(db.transaction(STORE, 'readonly').objectStore(STORE).getAllKeys())).map(String);
+}
+
+// ---------------------------------------------------------------------------
+// Save / restore
+// ---------------------------------------------------------------------------
+
+const storedBlobIds = new Set<string>();
+
+/**
+ * Saves the project JSON and syncs blobs (stores new ones; deletes blobs no
+ * longer referenced by the project or any undo snapshot).
+ */
+export async function saveProject(): Promise<void> {
+  const s = useEditorStore.getState();
+  try {
+    localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(serializeProject(s.project)));
+  } catch (e) {
+    console.warn('[autosave] could not write project JSON', e);
+  }
+  try {
+    const referenced = new Map<string, Blob | undefined>();
+    for (const p of [s.project, ...s.past.map((e) => e.project), ...s.future.map((e) => e.project)]) {
+      for (const a of Object.values(p.assets)) if (!referenced.has(a.id) || a.blob) referenced.set(a.id, a.blob);
+    }
+    for (const [id, blob] of referenced) {
+      if (blob && !storedBlobIds.has(id)) {
+        await putAssetBlob(id, blob);
+        storedBlobIds.add(id);
+      }
+    }
+    for (const id of await listAssetBlobIds()) {
+      if (!referenced.has(id)) {
+        await deleteAssetBlob(id);
+        storedBlobIds.delete(id);
+      }
+    }
+  } catch (e) {
+    console.warn('[autosave] could not sync media blobs', e);
+  }
+}
+
+/** Restores the autosaved project into the store (if any) and sets `hydrated`. */
+export async function restoreProject(): Promise<boolean> {
+  let ok = false;
+  try {
+    const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
+    if (raw) {
+      const data = JSON.parse(raw) as SerializedProject;
+      const blobs = new Map<string, Blob>();
+      for (const id of Object.keys(data.assets ?? {})) {
+        try {
+          const b = await getAssetBlob(id);
+          if (b) {
+            blobs.set(id, b);
+            storedBlobIds.add(id);
+          }
+        } catch {
+          /* IndexedDB unavailable: asset becomes 'missing' */
+        }
+      }
+      const project = deserializeProject(data, blobs);
+      if (project) {
+        useEditorStore.getState().loadProject(project);
+        ok = true;
+      }
+    }
+  } catch (e) {
+    console.warn('[autosave] restore failed', e);
+  }
+  useEditorStore.setState({ hydrated: true });
+  return ok;
+}
+
+/** Debounced autosave on every project change. Returns a stop function. */
+export function startAutosave(delayMs = 600): () => void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const unsub = useEditorStore.subscribe((s, prev) => {
+    if (s.project === prev.project || !s.hydrated) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => void saveProject(), delayMs);
+  });
+  const flush = () => {
+    clearTimeout(timer);
+    try {
+      localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(serializeProject(useEditorStore.getState().project)));
+    } catch {
+      /* ignore */
+    }
+  };
+  window.addEventListener('beforeunload', flush);
+  return () => {
+    unsub();
+    clearTimeout(timer);
+    window.removeEventListener('beforeunload', flush);
+  };
+}
