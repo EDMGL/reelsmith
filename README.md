@@ -34,6 +34,7 @@ src/
   features/overlays/    P3 — image/sticker overlays (image renderer)
   features/subtitles/   P3 — subtitle clips/styles (renderer, panel)
   features/silence/     P4 — silence detection + "Remove silence"
+  features/denoise/     noise reduction ("Audio cleanup" inspector section)
   features/export/      P4 — export (toolbar action, encoder)
 ```
 
@@ -224,6 +225,26 @@ Autosave (debounced 600 ms) writes the project JSON (minus `blob`/`objectURL`) t
 key `erdemcut:project:v1`; asset blobs go to IndexedDB (`erdemcut` / `assets`). On load the project
 is restored and object URLs recreated (`status: 'missing'` if a blob is gone). Keep any data you
 add to the project JSON-serializable. Undo history is not persisted.
+
+## Silence removal
+
+Silence panel (or **Remove silence** in the timeline toolbar). Pick a style — **Natural** (pauses
+≥ 0.7 s, generous padding), **Tight** (≥ 0.4 s) or **Jump cut** (≥ 0.25 s, also drops tiny noises
+between words) — and press **Detect silence** to review, or **⚡ Detect & cut** to cut everything at
+once. While a result is shown, changing the style/settings re-detects automatically. Each detected
+silence can be toggled and auditioned (▶ plays 1 s around it). Cutting is one undo step.
+
+## Noise reduction
+
+Select a video/audio clip → inspector **Audio cleanup** → Light / Medium / Strong → **Reduce noise**.
+Removes constant background noise (fan, AC hum, hiss, room tone) by spectral gating
+(`src/features/denoise/spectralGate.ts`): the quietest ~15 % of STFT frames give a per-bin noise
+profile, bins below `mean + n·std` are attenuated (mask smoothed over ±2 frames × ±2 bins).
+
+Runs in a worker: mediabunny decodes the audio, the cleaned PCM is re-encoded while **video packets
+are copied untouched** (no re-encode). The result is a new asset `"<name> (clean).<ext>"`
+(`derivedFrom` points at the source) and every clip using the file switches to it in one undo
+step. **Re-apply** always starts from the original; **Restore original** switches back.
 
 ## Auto captions (on-device Whisper)
 

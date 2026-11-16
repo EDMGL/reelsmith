@@ -238,6 +238,11 @@ export interface MediaAsset {
   objectURL: string;
   /** RUNTIME ONLY (persisted separately in IndexedDB): the file data. */
   blob?: Blob;
+  /**
+   * Set when this asset was generated from another one by an in-app operation
+   * (e.g. noise reduction), so the operation can be re-done or reverted.
+   */
+  derivedFrom?: { assetId: Id; operation: string; params?: Record<string, string | number | boolean> };
 }
 
 // ---------------------------------------------------------------------------
