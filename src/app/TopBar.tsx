@@ -121,11 +121,11 @@ export function TopBar() {
   const redo = useEditorStore((s) => s.redo);
   return (
     <header className="topbar">
-      <div className="brand" aria-label="Reelsmith">
+      <div className="brand" aria-label="Erdemcut">
         <span className="brand-mark" aria-hidden>
           ◆
         </span>
-        Reelsmith
+        Erdemcut
       </div>
       <ProjectName />
       <div className="topbar-group">

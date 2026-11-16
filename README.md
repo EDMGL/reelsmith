@@ -1,6 +1,8 @@
-# Reelsmith
+# Erdemcut
 
 A fully client-side, browser-based video editor (Vite + React + TypeScript + Zustand).
+
+Requires Node 22+ (`nvm use` picks it up from `.nvmrc`).
 
 ```bash
 npm install
@@ -219,9 +221,29 @@ Aspect: `ASPECT_PRESETS` (9:16 1080×1920, 16:9 1920×1080, 1:1 1080×1080, 4:5 
 ### Persistence
 
 Autosave (debounced 600 ms) writes the project JSON (minus `blob`/`objectURL`) to `localStorage`
-key `reelsmith:project:v1`; asset blobs go to IndexedDB (`reelsmith` / `assets`). On load the project
+key `erdemcut:project:v1`; asset blobs go to IndexedDB (`erdemcut` / `assets`). On load the project
 is restored and object URLs recreated (`status: 'missing'` if a blob is gone). Keep any data you
 add to the project JSON-serializable. Undo history is not persisted.
+
+## Auto captions (on-device Whisper)
+
+Subtitles panel → pick a model and language → **Auto captions**. Speech-to-text runs entirely in
+the browser via [transformers.js](https://github.com/huggingface/transformers.js) in a worker
+(`src/features/subtitles/whisper/`): WebGPU when available, otherwise multi-threaded WASM.
+Audio never leaves the machine.
+
+| Model | First download (WebGPU / WASM) | Notes |
+|---|---|---|
+| Whisper Base | ~210 MB / ~80 MB | fast, fine for clear speech |
+| Whisper Small | ~590 MB / ~250 MB | noticeably better Turkish |
+
+- Weights come from the Hugging Face Hub (`onnx-community/whisper-*`, CORS-enabled, so they load
+  under COEP) and are cached in Cache Storage; later runs start in seconds. onnxruntime's WASM is
+  bundled and served same-origin (no CDN).
+- The mixed timeline audio is cut into ≤28 s chunks at the quietest point (`planChunks`), chunks
+  below −50 dBFS are skipped (Whisper hallucinates on silence), and long segments are split into
+  ≤42-char cues with proportional timing (`segmentsToCues`).
+- Other engines can still plug in through `registerTranscriptionProvider`.
 
 ## Keyboard shortcuts
 

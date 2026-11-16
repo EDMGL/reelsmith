@@ -1,5 +1,5 @@
 /**
- * The Reelsmith playback/render engine (implements core's `PlaybackEngine`).
+ * The Erdemcut playback/render engine (implements core's `PlaybackEngine`).
  *
  * - Store-driven: subscribes to `isPlaying` / `seekNonce`, advances time with
  *   `setPlaybackTime`, pauses the store at the project end.
@@ -135,7 +135,7 @@ export function defaultEngineDeps(): EngineDeps {
   };
 }
 
-export class ReelsmithEngine implements PlaybackEngine {
+export class ErdemcutEngine implements PlaybackEngine {
   private readonly deps: EngineDeps;
   private readonly clock: PlaybackClock;
   /** Elements for preview/playback (audio routed through Web Audio). */

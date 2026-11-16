@@ -23,7 +23,7 @@ const IMPACT = SYSTEM_FONTS.find((f) => f.label === 'Impact')!.family;
 const SERIF = SYSTEM_FONTS.find((f) => f.label === 'Georgia')!.family;
 const MONO = SYSTEM_FONTS.find((f) => f.label === 'Monospace')!.family;
 
-/** Original Reelsmith text presets. */
+/** Original Erdemcut text presets. */
 export const TEXT_PRESETS: readonly TextPreset[] = [
   {
     id: 'headline',

@@ -9,13 +9,13 @@ import {
   type VideoClip,
 } from '../../core';
 import { makeAsset } from '../../core/__tests__/fixtures';
-import { ReelsmithEngine, type EngineDeps } from '../engine';
+import { ErdemcutEngine, type EngineDeps } from '../engine';
 import { renderVideoClip } from '../videoRenderer';
 import { FakeCtx, FakeVideo, fakeElementFactory } from './fakes';
 
 const S = () => useEditorStore.getState();
 let offs: Unregister[] = [];
-let engine: ReelsmithEngine | null = null;
+let engine: ErdemcutEngine | null = null;
 
 function project(): Project {
   const p = createProject({ width: 160, height: 90 });
@@ -32,7 +32,7 @@ interface Frames {
   pending: number;
 }
 
-function makeEngine(over: Partial<EngineDeps> = {}): { engine: ReelsmithEngine; now: { t: number }; frames: Frames } {
+function makeEngine(over: Partial<EngineDeps> = {}): { engine: ErdemcutEngine; now: { t: number }; frames: Frames } {
   const now = { t: 0 };
   const queue: (() => void)[] = [];
   const frames: Frames = {
@@ -41,7 +41,7 @@ function makeEngine(over: Partial<EngineDeps> = {}): { engine: ReelsmithEngine; 
       return queue.length;
     },
   };
-  engine = new ReelsmithEngine({
+  engine = new ErdemcutEngine({
     now: () => now.t,
     requestFrame: (cb) => queue.push(cb),
     cancelFrame: () => undefined,

@@ -4,13 +4,13 @@
  * core and never import this package.
  */
 import { registerClipRenderer, setEngine } from '../core';
-import { ReelsmithEngine } from './engine';
+import { ErdemcutEngine } from './engine';
 import { renderVideoClip } from './videoRenderer';
 
-export { ReelsmithEngine } from './engine';
+export { ErdemcutEngine } from './engine';
 export { renderVideoClip } from './videoRenderer';
 
 export function register(): void {
   registerClipRenderer('video', renderVideoClip);
-  setEngine(new ReelsmithEngine());
+  setEngine(new ErdemcutEngine());
 }

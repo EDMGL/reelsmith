@@ -28,7 +28,7 @@ function host(): HTMLElement | null {
   if (hostEl && hostEl.isConnected) return hostEl;
   hostEl = document.createElement('div');
   hostEl.setAttribute('aria-hidden', 'true');
-  hostEl.dataset.reelsmithMedia = '';
+  hostEl.dataset.erdemcutMedia = '';
   Object.assign(hostEl.style, {
     position: 'fixed',
     left: '0',

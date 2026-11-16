@@ -1,5 +1,5 @@
 /**
- * Auto-transcription plumbing. Reelsmith ships NO speech model: a provider
+ * Auto-transcription plumbing. Erdemcut ships NO speech model: a provider
  * (on-device WASM model, a user-configured service, …) registers itself here
  * and the Subtitles panel's "Auto captions" button becomes available.
  */
@@ -11,6 +11,8 @@ export interface TranscriptionOptions {
   language?: string;
   /** Progress 0..1. */
   onProgress?: (fraction: number) => void;
+  /** Human-readable phase, e.g. "Downloading model… 40%". */
+  onStatus?: (message: string) => void;
   /** Abort -> the promise must reject with an AbortError (DOMException name 'AbortError'). */
   signal?: AbortSignal;
 }

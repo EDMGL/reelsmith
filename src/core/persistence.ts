@@ -1,7 +1,7 @@
 /**
  * Autosave / restore.
  * - Project JSON (without blobs/objectURLs) -> localStorage key `PROJECT_STORAGE_KEY`.
- * - Asset blobs -> IndexedDB database `reelsmith`, object store `assets` (key = asset id).
+ * - Asset blobs -> IndexedDB database `erdemcut`, object store `assets` (key = asset id).
  * On restore, blobs are loaded and fresh object URLs created; assets whose blob
  * is gone get `status: 'missing'`.
  */
@@ -9,8 +9,8 @@ import { DEFAULT_SUBTITLE_STYLE_ID, defaultSubtitleStyle } from './model';
 import { useEditorStore } from './store';
 import type { MediaAsset, Project } from './types';
 
-export const PROJECT_STORAGE_KEY = 'reelsmith:project:v1';
-const DB_NAME = 'reelsmith';
+export const PROJECT_STORAGE_KEY = 'erdemcut:project:v1';
+const DB_NAME = 'erdemcut';
 const STORE = 'assets';
 
 export type SerializedAsset = Omit<MediaAsset, 'objectURL' | 'blob'>;

@@ -17,6 +17,10 @@ export default defineConfig({
   plugins: [react()],
   server: { headers: isolationHeaders },
   preview: { headers: isolationHeaders },
+  // Pre-bundle the Whisper worker's dependency up front: otherwise Vite discovers it the first time
+  // the worker starts and reloads the page mid-transcription.
+  optimizeDeps: { include: ['@huggingface/transformers'] },
+  worker: { format: 'es' },
   test: {
     environment: 'jsdom',
     globals: true,

@@ -254,15 +254,20 @@ describe('subtitle renderer via core registry', () => {
 });
 
 describe('transcription providers', () => {
+  it('register() installs the on-device Whisper providers', () => {
+    expect(getTranscriptionProviders().map((x) => x.id)).toEqual(expect.arrayContaining(['whisper-base', 'whisper-small']));
+  });
+
   it('registry add/replace/remove', () => {
+    const base = getTranscriptionProviders().map((x) => x.id);
     const p = createMockTranscriptionProvider();
     const off = registerTranscriptionProvider(p);
     registerTranscriptionProvider(createMockTranscriptionProvider({ id: 'other' }));
-    expect(getTranscriptionProviders().map((x) => x.id)).toEqual(['mock', 'other']);
+    expect(getTranscriptionProviders().map((x) => x.id)).toEqual([...base, 'mock', 'other']);
     off();
-    expect(getTranscriptionProviders().map((x) => x.id)).toEqual(['other']);
+    expect(getTranscriptionProviders().map((x) => x.id)).toEqual([...base, 'other']);
     registerTranscriptionProvider(createMockTranscriptionProvider({ id: 'other' }))();
-    expect(getTranscriptionProviders()).toHaveLength(0);
+    expect(getTranscriptionProviders().map((x) => x.id)).toEqual(base);
   });
 
   it('mock provider is deterministic, reports progress and honours abort', async () => {

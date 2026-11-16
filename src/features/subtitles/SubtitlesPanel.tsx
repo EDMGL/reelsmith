@@ -221,11 +221,53 @@ function StyleEditor() {
   );
 }
 
+/** Whisper language hints ('' = auto-detect). */
+const CAPTION_LANGUAGES: readonly [code: string, label: string][] = [
+  ['', 'Auto language'],
+  ['tr', 'Turkish'],
+  ['en', 'English'],
+  ['de', 'German'],
+  ['fr', 'French'],
+  ['es', 'Spanish'],
+  ['it', 'Italian'],
+  ['pt', 'Portuguese'],
+  ['ru', 'Russian'],
+  ['ar', 'Arabic'],
+  ['nl', 'Dutch'],
+  ['ja', 'Japanese'],
+];
+
+const PREFS_KEY = 'erdemcut:autoCaptions';
+
+function readPrefs(): { provider?: string; language?: string } {
+  try {
+    return JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') ?? {};
+  } catch {
+    return {};
+  }
+}
+
+function writePrefs(prefs: { provider?: string; language?: string }): void {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    /* storage unavailable: preference just isn't remembered */
+  }
+}
+
 function AutoCaptions({ trackId, onStatus }: { trackId: Id | null; onStatus: (s: Status) => void }) {
   const providers = useTranscriptionProviders();
   const [progress, setProgress] = useState<number | null>(null);
+  const [phase, setPhase] = useState('');
+  const [prefs, setPrefs] = useState(readPrefs);
   const abortRef = useRef<AbortController | null>(null);
-  const provider = providers[0];
+  const provider = providers.find((p) => p.id === prefs.provider) ?? providers[0];
+  const language = prefs.language ?? '';
+  const updatePrefs = (patch: { provider?: string; language?: string }) => {
+    const next = { ...prefs, ...patch };
+    setPrefs(next);
+    writePrefs(next);
+  };
   const run = async () => {
     if (!provider) return;
     const engine = getEngine();
@@ -235,9 +277,16 @@ function AutoCaptions({ trackId, onStatus }: { trackId: Id | null; onStatus: (s:
     const ac = new AbortController();
     abortRef.current = ac;
     setProgress(0);
+    setPhase('Extracting audio…');
     try {
       const audio = await engine.mixAudio({ start: 0, end: duration, sampleRate: 16000, channels: 1 });
-      const cues = await provider.transcribe(audio, { signal: ac.signal, onProgress: (f) => setProgress(f) });
+      const cues = await provider.transcribe(audio, {
+        signal: ac.signal,
+        language: language || undefined,
+        onProgress: (f) => setProgress(f),
+        onStatus: setPhase,
+      });
+      if (cues.length === 0) return onStatus({ kind: 'info', text: 'Auto captions found no speech.' });
       onStatus(describeImport(importCues(cues, { trackId, label: 'Auto captions' })));
     } catch (e) {
       const aborted = e instanceof DOMException && e.name === 'AbortError';
@@ -245,6 +294,7 @@ function AutoCaptions({ trackId, onStatus }: { trackId: Id | null; onStatus: (s:
     } finally {
       abortRef.current = null;
       setProgress(null);
+      setPhase('');
     }
   };
   if (progress !== null) {
@@ -254,16 +304,37 @@ function AutoCaptions({ trackId, onStatus }: { trackId: Id | null; onStatus: (s:
         <button type="button" className="btn btn-small" onClick={() => abortRef.current?.abort()}>
           Cancel
         </button>
+        {phase && <span className="p3-phase">{phase}</span>}
       </span>
     );
   }
   return (
-    // Wrapper carries the tooltip: disabled buttons do not fire hover events in every browser.
-    <span title={provider ? `Generate captions with ${provider.label}` : 'Auto captions need a speech-to-text provider, and none is installed in this build.'}>
-      <button type="button" className="btn" disabled={!provider} onClick={run}>
-        Auto captions
-      </button>
-    </span>
+    <>
+      {providers.length > 1 && (
+        <select aria-label="Speech-to-text model" value={provider?.id} onChange={(e) => updatePrefs({ provider: e.target.value })}>
+          {providers.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+      )}
+      {provider && (
+        <select aria-label="Caption language" value={language} onChange={(e) => updatePrefs({ language: e.target.value })}>
+          {CAPTION_LANGUAGES.map(([code, label]) => (
+            <option key={code} value={code}>
+              {label}
+            </option>
+          ))}
+        </select>
+      )}
+      {/* Wrapper carries the tooltip: disabled buttons do not fire hover events in every browser. */}
+      <span title={provider ? `Generate captions with ${provider.label}` : 'Auto captions need a speech-to-text provider, and none is installed in this build.'}>
+        <button type="button" className="btn" disabled={!provider} onClick={run}>
+          Auto captions
+        </button>
+      </span>
+    </>
   );
 }
 
