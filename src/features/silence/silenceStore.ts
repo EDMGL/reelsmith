@@ -4,7 +4,8 @@
  */
 import { create } from 'zustand';
 import { getProjectDuration, normalizeRanges, useEditorStore, type Id, type MediaAsset, type Project, type TimeRange } from '../../core';
-import { DEFAULT_SILENCE_PARAMS, type SignalAnalysis, type SilenceParams } from './analysis';
+import type { SignalAnalysis, SilenceParams } from './analysis';
+import { DEFAULT_PRESET_ID, presetParams } from './presets';
 import { decodeAssetMono, type MonoAudio } from './decodeAudio';
 import { runAnalysis, type RunOptions } from './runAnalysis';
 import {
@@ -52,10 +53,14 @@ export interface SilenceState {
   /** Message after a removal (e.g. "Removed 4 silences, 3.2 s"). */
   notice: string | null;
 
+  /** Changing parameters/scope re-runs detection automatically (debounced) while a result is shown. */
   setParams(p: Partial<SilenceParams>): void;
+  applyPreset(id: string): void;
   setScope(s: SilenceScope): void;
   setIncludeNoAudio(v: boolean): void;
   detect(): Promise<void>;
+  /** Detects and immediately removes every detected silence (one undo step). */
+  detectAndRemove(): Promise<boolean>;
   abort(): void;
   toggleRange(index: number): void;
   setAllIncluded(v: boolean): void;
@@ -72,6 +77,20 @@ export const silenceDeps = {
 };
 
 let controller: AbortController | null = null;
+let redetectTimer: ReturnType<typeof setTimeout> | null = null;
+/** Delay before re-running detection after a parameter change, ms. */
+export const REDETECT_DELAY_MS = 350;
+
+function scheduleRedetect(get: () => SilenceState): void {
+  const { result, status } = get();
+  if (!result || (status !== 'done' && status !== 'running')) return;
+  if (redetectTimer) clearTimeout(redetectTimer);
+  redetectTimer = setTimeout(() => {
+    redetectTimer = null;
+    const s = get();
+    if (s.result && !isStale(s.result, useEditorStore.getState().project)) void s.detect();
+  }, REDETECT_DELAY_MS);
+}
 
 export function isStale(result: SilenceResult | null, project: Project): boolean {
   return !!result && (result.clipsRef !== project.clips || result.tracksRef !== project.tracks);
@@ -86,7 +105,7 @@ export function riskyLockedTracks(project: Project, result: SilenceResult | null
 }
 
 export const useSilenceStore = create<SilenceState>()((set, get) => ({
-  params: { ...DEFAULT_SILENCE_PARAMS },
+  params: presetParams(DEFAULT_PRESET_ID),
   scope: 'timeline',
   includeNoAudio: false,
   status: 'idle',
@@ -95,9 +114,34 @@ export const useSilenceStore = create<SilenceState>()((set, get) => ({
   result: null,
   notice: null,
 
-  setParams: (p) => set({ params: { ...get().params, ...p } }),
-  setScope: (scope) => set({ scope }),
-  setIncludeNoAudio: (includeNoAudio) => set({ includeNoAudio }),
+  setParams: (p) => {
+    set({ params: { ...get().params, ...p } });
+    scheduleRedetect(get);
+  },
+  applyPreset: (id) => {
+    const { windowMs, hysteresisDb, thresholdDb } = get().params;
+    set({ params: { ...presetParams(id), windowMs, hysteresisDb, thresholdDb } });
+    scheduleRedetect(get);
+  },
+  setScope: (scope) => {
+    set({ scope });
+    scheduleRedetect(get);
+  },
+  setIncludeNoAudio: (includeNoAudio) => {
+    set({ includeNoAudio });
+    scheduleRedetect(get);
+  },
+
+  detectAndRemove: async () => {
+    await get().detect();
+    const s = get();
+    if (s.status !== 'done' || !s.result) return false;
+    if (s.result.ranges.length === 0) {
+      set({ result: null, status: 'idle', notice: 'No silences found with these settings.' });
+      return false;
+    }
+    return s.removeSelected();
+  },
 
   detect: async () => {
     controller?.abort();
@@ -193,6 +237,8 @@ export const useSilenceStore = create<SilenceState>()((set, get) => ({
   },
 
   clear: () => {
+    if (redetectTimer) clearTimeout(redetectTimer);
+    redetectTimer = null;
     controller?.abort();
     controller = null;
     set({ result: null, status: 'idle', error: null, notice: null, progress: { fraction: 0, label: '' } });
