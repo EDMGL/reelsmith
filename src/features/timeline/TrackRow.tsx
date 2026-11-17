@@ -1,31 +1,21 @@
-import { Fragment, memo, useState, type DragEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import {
-  ASSET_DRAG_MIME,
-  CLIP_TEMPLATE_DRAG_MIME,
-  createId,
-  snapTime,
-  useEditorStore,
-  type Clip,
-  type Track,
-} from '../../core';
+import { memo, useMemo, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { Icon, clipEnd, useEditorStore, type Clip, type IconName, type Track } from '../../core';
 import { ClipView } from './ClipView';
-import { snapCandidates } from './geometry';
-import { HEADER_WIDTH, SNAP_PX, TRACK_HEIGHT, useTimelineUi } from './timelineUi';
+import { HEADER_WIDTH, TRACK_HEIGHT, renderCounts } from './timelineUi';
 
-const KIND_ICON: Record<Track['kind'], string> = { video: '▬', overlay: '◱', audio: '♪', text: 'T', subtitle: '❝' };
+const KIND_ICON: Record<Track['kind'], IconName> = { video: 'film', overlay: 'layers', audio: 'waveform', text: 'text', subtitle: 'subtitles' };
 
 function TrackHeader({ track, canDelete }: { track: Track; canDelete: boolean }) {
   const updateTrack = useEditorStore((s) => s.updateTrack);
   const removeTrack = useEditorStore((s) => s.removeTrack);
   const selectTrack = useEditorStore((s) => s.selectTrack);
   const selected = useEditorStore((s) => s.selectedTrackId === track.id);
-  const clipCount = useEditorStore((s) => Object.values(s.project.clips).filter((c) => c.trackId === track.id).length);
   const visual = track.kind !== 'audio';
   const audible = track.kind === 'video' || track.kind === 'audio' || track.kind === 'overlay';
   return (
     <div className={`track-header${selected ? ' selected' : ''}`} style={{ width: HEADER_WIDTH }} onPointerDown={() => selectTrack(track.id)}>
       <span className={`track-kind kind-${track.kind}`} aria-hidden>
-        {KIND_ICON[track.kind]}
+        <Icon name={KIND_ICON[track.kind]} size={14} />
       </span>
       <span className="track-name" title={track.name}>
         {track.name}
@@ -40,7 +30,7 @@ function TrackHeader({ track, canDelete }: { track: Track; canDelete: boolean })
             title={track.muted ? 'Unmute' : 'Mute'}
             onClick={() => updateTrack(track.id, { muted: !track.muted })}
           >
-            {track.muted ? '🔇' : '🔊'}
+            <Icon name={track.muted ? 'volume-off' : 'volume'} size={14} />
           </button>
         )}
         {visual && (
@@ -52,7 +42,7 @@ function TrackHeader({ track, canDelete }: { track: Track; canDelete: boolean })
             title={track.hidden ? 'Show' : 'Hide'}
             onClick={() => updateTrack(track.id, { hidden: !track.hidden })}
           >
-            {track.hidden ? '◌' : '◉'}
+            <Icon name={track.hidden ? 'eye-off' : 'eye'} size={14} />
           </button>
         )}
         <button
@@ -63,7 +53,7 @@ function TrackHeader({ track, canDelete }: { track: Track; canDelete: boolean })
           title={track.locked ? 'Unlock' : 'Lock'}
           onClick={() => updateTrack(track.id, { locked: !track.locked })}
         >
-          {track.locked ? '🔒' : '🔓'}
+          <Icon name={track.locked ? 'lock' : 'unlock'} size={14} />
         </button>
         {canDelete && (
           <button
@@ -72,10 +62,12 @@ function TrackHeader({ track, canDelete }: { track: Track; canDelete: boolean })
             aria-label="Remove track"
             title="Remove track"
             onClick={() => {
+              // Counted on click only (a per-render count would scan every clip on every store update).
+              const clipCount = Object.values(useEditorStore.getState().project.clips).filter((c) => c.trackId === track.id).length;
               if (clipCount === 0 || window.confirm(`Remove "${track.name}" and its ${clipCount} clip(s)?`)) removeTrack(track.id);
             }}
           >
-            ×
+            <Icon name="close" size={13} />
           </button>
         )}
       </div>
@@ -83,103 +75,76 @@ function TrackHeader({ track, canDelete }: { track: Track; canDelete: boolean })
   );
 }
 
-/** Handles media-library / clip-template drops at a time, optionally onto a track. */
-export function handleTimelineDrop(e: DragEvent, time: number, trackId?: string): boolean {
-  const s = useEditorStore.getState();
-  const t = Math.max(0, snapTime(time, snapCandidates(s.project, new Set(), s.currentTime), SNAP_PX / s.zoom).time);
-  const assetId = e.dataTransfer.getData(ASSET_DRAG_MIME);
-  if (assetId) {
-    e.preventDefault();
-    const id = (trackId && s.addAssetClip(assetId, { trackId, start: t })) || s.addAssetClip(assetId, { start: t });
-    return !!id;
+/**
+ * Clips of a start-sorted, non-overlapping track list that intersect
+ * [from, to] (binary search on the end times, which are sorted too).
+ */
+export function visibleClips(clips: readonly Clip[], from: number, to: number): Clip[] {
+  let lo = 0;
+  let hi = clips.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (clipEnd(clips[mid]!) < from) lo = mid + 1;
+    else hi = mid;
   }
-  const tpl = e.dataTransfer.getData(CLIP_TEMPLATE_DRAG_MIME);
-  if (tpl) {
-    e.preventDefault();
-    try {
-      const clip = { ...(JSON.parse(tpl) as Clip), id: createId('clip') };
-      const id = (trackId && s.insertClip(clip, { trackId, start: t })) || s.insertClip(clip, { start: t });
-      return !!id;
-    } catch {
-      return false;
-    }
-  }
-  return false;
-}
-
-export function acceptsTimelineDrag(e: DragEvent): boolean {
-  return e.dataTransfer.types.includes(ASSET_DRAG_MIME) || e.dataTransfer.types.includes(CLIP_TEMPLATE_DRAG_MIME);
+  const out: Clip[] = [];
+  for (let i = lo; i < clips.length && clips[i]!.start <= to; i++) out.push(clips[i]!);
+  return out;
 }
 
 interface TrackRowProps {
   track: Track;
-  clips: Clip[];
-  /** Clips dragged from other tracks onto this one (ghosts). */
-  incoming: Clip[];
+  /** This track's clips sorted by start. Keeps its identity while the track is unchanged. */
+  clips: readonly Clip[];
   zoom: number;
   contentWidth: number;
   canDelete: boolean;
-  clientXToTime: (x: number) => number;
+  /** Mounted time window (seconds): only clips intersecting it are rendered. */
+  winStart: number;
+  winEnd: number;
   /** Pointer down on empty lane space (box selection / click to seek). */
-  onLanePointerDown?: (e: ReactPointerEvent, track: Track) => void;
+  onLanePointerDown: (e: ReactPointerEvent, track: Track) => void;
+  /** Right click on empty lane space. */
+  onLaneContextMenu: (e: ReactMouseEvent, track: Track) => void;
 }
 
-export const TrackRow = memo(function TrackRow({ track, clips, incoming, zoom, contentWidth, canDelete, clientXToTime, onLanePointerDown }: TrackRowProps) {
-  const drag = useTimelineUi((s) => s.drag);
-  const [dropHover, setDropHover] = useState(false);
+export const TrackRow = memo(function TrackRow({
+  track,
+  clips,
+  zoom,
+  contentWidth,
+  canDelete,
+  winStart,
+  winEnd,
+  onLanePointerDown,
+  onLaneContextMenu,
+}: TrackRowProps) {
+  renderCounts.trackRow++;
   const height = TRACK_HEIGHT[track.kind] ?? 48;
-  const dragged = new Set(drag?.ids ?? []);
+  const shown = useMemo(() => visibleClips(clips, winStart, winEnd), [clips, winStart, winEnd]);
   return (
-    <div className={`track-row kind-${track.kind}${track.hidden ? ' hidden-track' : ''}${track.locked ? ' locked-track' : ''}`} style={{ height }}>
+    <div
+      className={`track-row kind-${track.kind}${track.hidden ? ' hidden-track' : ''}${track.locked ? ' locked-track' : ''}${track.muted ? ' muted-track' : ''}`}
+      style={{ height }}
+      data-track-id={track.id}
+    >
       <TrackHeader track={track} canDelete={canDelete} />
       <div
-        className={`lane${dropHover ? ' drop-hover' : ''}`}
+        className="lane"
         data-lane-track-id={track.id}
         style={{ width: contentWidth }}
         onPointerDown={(e) => {
           if (e.button !== 0 || e.target !== e.currentTarget) return;
-          if (onLanePointerDown) return onLanePointerDown(e, track);
-          const s = useEditorStore.getState();
-          s.clearSelection();
-          s.selectTrack(track.id);
-          s.setCurrentTime(clientXToTime(e.clientX));
+          onLanePointerDown(e, track);
         }}
-        onDragOver={(e) => {
-          if (!acceptsTimelineDrag(e)) return;
-          e.preventDefault();
-          e.dataTransfer.dropEffect = 'copy';
-          setDropHover(true);
-        }}
-        onDragLeave={() => setDropHover(false)}
-        onDrop={(e) => {
-          setDropHover(false);
-          handleTimelineDrop(e, clientXToTime(e.clientX), track.id);
+        onContextMenu={(e) => {
+          if (e.target !== e.currentTarget) return;
+          onLaneContextMenu(e, track);
         }}
       >
-        {clips.map((c) => {
-          const isDragged = dragged.has(c.id);
-          const movesAway = isDragged && drag?.trackId !== undefined && drag.trackId !== track.id;
-          if (!isDragged) return <ClipView key={c.id} clip={c} start={c.start} zoom={zoom} locked={track.locked} />;
-          return (
-            <Fragment key={c.id}>
-              <ClipView clip={c} start={c.start} zoom={zoom} locked={track.locked} placeholder />
-              {!movesAway && (
-                <ClipView clip={c} start={Math.max(0, c.start + drag!.delta)} zoom={zoom} locked={false} ghost={drag!.valid ? 'valid' : 'invalid'} />
-              )}
-            </Fragment>
-          );
-        })}
-        {drag &&
-          incoming.map((c) => (
-            <ClipView
-              key={`ghost-${c.id}`}
-              clip={c}
-              start={Math.max(0, c.start + drag.delta)}
-              zoom={zoom}
-              locked={false}
-              ghost={drag.valid ? 'valid' : 'invalid'}
-            />
-          ))}
+        {shown.map((c) => (
+          <ClipView key={c.id} clip={c} zoom={zoom} locked={track.locked} />
+        ))}
       </div>
     </div>
   );

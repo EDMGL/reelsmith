@@ -1,4 +1,13 @@
-import { Slot, useEditorStore, useRegistry, toolbarRegistry, type ToolbarAction, type ToolbarLocation } from '../core';
+import { Icon, Slot, useEditorStore, type IconName, useRegistry, toolbarRegistry, type ToolbarAction, type ToolbarLocation } from '../core';
+
+/** Shell-side SVG icons for known actions (falls back to the action's own icon). */
+const ACTION_ICONS: Record<string, IconName> = {
+  'recorder:open': 'record-dot',
+  'motion:punch-in': 'punch-in',
+  'silence:detect': 'silence',
+  'voiceover:open': 'mic',
+  export: 'export',
+};
 
 function ActionButton({ action }: { action: ToolbarAction }) {
   const enabled = useEditorStore((s) => (action.isEnabled ? action.isEnabled(s) : true));
@@ -6,7 +15,14 @@ function ActionButton({ action }: { action: ToolbarAction }) {
   return (
     <button
       type="button"
-      className={action.variant === 'primary' ? 'btn btn-primary' : 'btn'}
+      className={[
+        'btn',
+        action.variant === 'primary' && 'btn-primary',
+        action.location === 'timeline' && 'btn-small btn-ghost',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      aria-label={action.label}
       data-action={action.id}
       title={action.title ?? action.label}
       disabled={!enabled}
@@ -19,8 +35,14 @@ function ActionButton({ action }: { action: ToolbarAction }) {
         }
       }}
     >
-      {action.icon && <span className="btn-icon">{action.icon}</span>}
-      {action.label}
+      {ACTION_ICONS[action.id] ? (
+        <span className="btn-icon" aria-hidden>
+          <Icon name={ACTION_ICONS[action.id]!} size={action.location === 'timeline' ? 15 : 16} />
+        </span>
+      ) : (
+        action.icon && <span className="btn-icon">{action.icon}</span>
+      )}
+      <span className="btn-label">{action.label}</span>
     </button>
   );
 }

@@ -1,104 +1,179 @@
+/* Export dialog: same look as the shared .dialog (app/theme.css). Tokens only. */
 .exp-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 1000;
-  background: rgba(5, 6, 9, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
+  z-index: var(--z-modal);
+  display: grid;
+  place-items: center;
+  padding: var(--space-6);
+  background: var(--scrim);
+  animation: fade-in var(--dur) var(--ease);
 }
 .exp-dialog {
-  width: min(480px, 100%);
-  max-height: calc(100vh - 32px);
-  overflow-y: auto;
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  width: min(500px, 100%);
+  max-height: min(720px, calc(100vh - 48px));
+  overflow: hidden;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-3);
   color: var(--text);
+  animation: dialog-in var(--dur-slow) var(--ease-out);
 }
 .exp-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--border);
 }
 .exp-head h2 {
+  flex: 1;
+  min-width: 0;
   margin: 0;
-  font-size: 16px;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
 }
-.exp-form {
-  border: none;
-  margin: 0;
-  padding: 0;
+.exp-body {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-4);
+  min-height: 0;
+  padding: var(--space-5) var(--space-6);
+  overflow-y: auto;
+}
+
+/* Settings form */
+.exp-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
 }
 .exp-form label,
 .exp-row {
   display: grid;
-  grid-template-columns: 110px 1fr;
+  grid-template-columns: 110px minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
+  gap: var(--space-3);
 }
 .exp-form label > span,
 .exp-row > span:first-child {
   color: var(--text-dim);
+  font-size: var(--fs-sm);
 }
+.exp-form input,
+.exp-form select {
+  width: 100%;
+}
+.exp-row > span:last-child {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Summary */
 .exp-info {
-  font-size: 12px;
-  color: var(--text-dim);
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  border-top: 1px solid var(--border);
-  padding-top: 10px;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-0);
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
 }
 .exp-info strong {
   color: var(--text);
+  font-weight: var(--fw-semibold);
 }
 .exp-warn {
   color: var(--warning);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
-.exp-blocker {
-  margin: 0;
-}
-.exp-error {
-  margin: 0;
-  color: var(--danger);
-}
+
+/* Messages (also .status-msg) */
+.exp-blocker,
+.exp-error,
 .exp-note {
   margin: 0;
+  line-height: 1.5;
+}
+.exp-blocker .icon {
+  margin-top: var(--space-0);
+}
+.exp-error,
+.exp-note {
+  display: block;
 }
 .exp-note a {
   color: var(--accent);
+  font-weight: var(--fw-medium);
+  text-decoration: none;
+}
+.exp-note a:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+.exp-done strong {
+  color: var(--text);
+}
+
+/* Progress */
+.exp-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 .exp-bar {
+  position: relative;
   height: 8px;
-  border-radius: 4px;
-  background: var(--surface-3);
+  border-radius: var(--radius-full);
+  background: var(--surface-4);
   overflow: hidden;
 }
 .exp-bar > div {
   height: 100%;
+  border-radius: inherit;
   background: var(--accent);
+  transition: width var(--dur) linear;
 }
 .exp-stats {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  margin-top: 4px;
-  font-size: 12px;
+  gap: var(--space-1) var(--space-3);
   color: var(--text-dim);
   font-family: var(--mono);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
 }
+
 .exp-foot {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 480px) {
+  .exp-form label,
+  .exp-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+  .exp-head,
+  .exp-body,
+  .exp-foot {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
 }

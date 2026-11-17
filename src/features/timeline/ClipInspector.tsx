@@ -7,6 +7,7 @@ import {
   inspectorTargets,
   isMediaClip,
   isVisualClip,
+  ops,
   useEditorStore,
   type ClipPatch,
   type InspectorProps,
@@ -103,13 +104,43 @@ function round(v: number): number {
   return Math.round(v * 1000) / 1000;
 }
 
+/** "Detach audio" / "Restore audio" buttons for the given clips (one undo step each). */
+function DetachAudioControls({ ids, project }: { ids: readonly string[]; project: InspectorProps['project'] }) {
+  const S = useEditorStore.getState;
+  const detachable = ids.filter((id) => ops.canDetachAudio(project, project.clips[id]));
+  const restorable = ids.filter((id) => ops.canRestoreAudio(project, project.clips[id]));
+  const linked = ops.linkedClipIds(project, ids);
+  if (!detachable.length && !restorable.length && !linked.length) return null;
+  const n = (k: number) => (ids.length > 1 ? ` (${k})` : '');
+  return (
+    <div className="field-row" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {detachable.length > 0 && (
+        <button type="button" className="btn btn-small" onClick={() => S().detachAudio(detachable)} title="Move the audio to its own clip on an audio track">
+          Detach audio{n(detachable.length)}
+        </button>
+      )}
+      {restorable.length > 0 && (
+        <button type="button" className="btn btn-small" onClick={() => S().restoreAudio(restorable)} title="Remove the detached audio clip and unmute the video">
+          Restore audio{n(restorable.length)}
+        </button>
+      )}
+      {linked.length > 0 && (
+        <button type="button" className="btn btn-small" onClick={() => S().selectLinkedClips(ids)} title="Also select the linked video/audio clip">
+          Select linked
+        </button>
+      )}
+    </div>
+  );
+}
+
 /**
  * Several clips: only the settings that make sense for all of them at once
  * (volume, fades). Timing stays per clip.
  */
 function MultiClipInspector({ clip, project, targets }: InspectorProps & { targets: readonly string[] }) {
   const S = useEditorStore.getState;
-  const media = targets.map((id) => project.clips[id]).filter((c) => c && isMediaClip(c));
+  // Detached video clips stay silent (their sound lives in the detached audio clip).
+  const media = targets.map((id) => project.clips[id]).filter((c) => c && isMediaClip(c) && !(c.type === 'video' && c.audioDetached));
   const firstMedia = media[0];
   return (
     <fieldset className="inspector-fields">
@@ -124,6 +155,7 @@ function MultiClipInspector({ clip, project, targets }: InspectorProps & { targe
           onChange={(volume) => S().updateClips(media.map((c) => c!.id), { volume }, 'Volume')}
         />
       )}
+      <DetachAudioControls ids={targets} project={project} />
       <NumberField label="Fade in" value={clip.fadeIn} min={0} step={0.05} suffix="s" onCommit={(fadeIn) => S().updateClips(targets, { fadeIn }, 'Fade in')} />
       <NumberField label="Fade out" value={clip.fadeOut} min={0} step={0.05} suffix="s" onCommit={(fadeOut) => S().updateClips(targets, { fadeOut }, 'Fade out')} />
       <p className="muted small">Tip: a 0.05 s fade in/out on every piece softens clicks at silence cuts. Start, duration and speed are edited per clip.</p>
@@ -159,7 +191,12 @@ export function ClipInspector(props: InspectorProps) {
       {isMediaClip(clip) && (
         <>
           <NumberField label="Speed" value={clip.speed} step={0.05} min={MIN_SPEED} max={MAX_SPEED} suffix="×" onCommit={(v) => update({ speed: v })} />
-          <RangeField label="Volume" value={clip.volume} min={0} max={MAX_VOLUME} step={0.01} format={(v) => `${Math.round(v * 100)}%`} onChange={(v) => update({ volume: v })} />
+          {clip.type === 'video' && clip.audioDetached ? (
+            <p className="muted small">Audio detached — the video clip is silent; its sound is a separate audio clip.</p>
+          ) : (
+            <RangeField label="Volume" value={clip.volume} min={0} max={MAX_VOLUME} step={0.01} format={(v) => `${Math.round(v * 100)}%`} onChange={(v) => update({ volume: v })} />
+          )}
+          <DetachAudioControls ids={[clip.id]} project={project} />
           <p className="muted small">
             Source {round(clip.sourceIn)}s – {round(clip.sourceOut)}s
           </p>

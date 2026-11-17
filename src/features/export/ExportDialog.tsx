@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { formatDuration, useEditorStore, useEngine, getProjectDuration } from '../../core';
+import { Icon, formatDuration, useEditorStore, useEngine, getProjectDuration } from '../../core';
 import { useExportStore } from './exportStore';
 import { hasWebCodecs } from './pipeline';
 import {
@@ -51,104 +51,111 @@ export default function ExportDialog() {
       <div className="exp-dialog" role="dialog" aria-modal="true" aria-labelledby="exp-title">
         <header className="exp-head">
           <h2 id="exp-title">Export video</h2>
-          <button type="button" className="btn btn-small btn-icon-only" aria-label="Close" disabled={running} onClick={() => st.closeDialog()}>
-            ×
+          <button type="button" className="btn btn-ghost btn-icon-only" aria-label="Close" disabled={running} onClick={() => st.closeDialog()}>
+            <Icon name="close" />
           </button>
         </header>
 
-        <fieldset className="exp-form" disabled={running}>
-          <label>
-            <span>File name</span>
-            <input type="text" value={settings.fileName} onChange={(e) => st.updateSettings({ fileName: e.target.value })} />
-          </label>
-          <label>
-            <span>Resolution</span>
-            <select
-              value={String(settings.resolution)}
-              onChange={(e) => st.updateSettings({ resolution: (e.target.value === 'project' ? 'project' : Number(e.target.value)) as ResolutionPreset })}
-            >
-              {resOptions.map((o) => (
-                <option key={String(o.value)} value={String(o.value)}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Frame rate</span>
-            <select value={settings.fps} onChange={(e) => st.updateSettings({ fps: Number(e.target.value) })}>
-              {fpsOptions(project.fps).map((f) => (
-                <option key={f} value={f}>
-                  {f} fps{f === project.fps ? ' (project)' : ''}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Quality</span>
-            <select value={settings.quality} onChange={(e) => st.updateSettings({ quality: e.target.value as QualityPreset })}>
-              {(Object.keys(QUALITY_LABELS) as QualityPreset[]).map((q) => (
-                <option key={q} value={q}>
-                  {QUALITY_LABELS[q]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Format</span>
-            <select value={settings.format} onChange={(e) => st.updateSettings({ format: e.target.value as 'mp4' | 'webm' })}>
-              <option value="mp4">MP4 (H.264 + AAC)</option>
-              <option value="webm">WebM (VP9 + Opus)</option>
-            </select>
-          </label>
-          <div className="exp-row">
-            <span>Range</span>
-            <span>Whole project ({formatDuration(duration)})</span>
-          </div>
-        </fieldset>
+        <div className="exp-body">
+          <fieldset className="exp-form" disabled={running}>
+            <label>
+              <span>File name</span>
+              <input type="text" value={settings.fileName} onChange={(e) => st.updateSettings({ fileName: e.target.value })} />
+            </label>
+            <label>
+              <span>Resolution</span>
+              <select
+                value={String(settings.resolution)}
+                onChange={(e) => st.updateSettings({ resolution: (e.target.value === 'project' ? 'project' : Number(e.target.value)) as ResolutionPreset })}
+              >
+                {resOptions.map((o) => (
+                  <option key={String(o.value)} value={String(o.value)}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Frame rate</span>
+              <select value={settings.fps} onChange={(e) => st.updateSettings({ fps: Number(e.target.value) })}>
+                {fpsOptions(project.fps).map((f) => (
+                  <option key={f} value={f}>
+                    {f} fps{f === project.fps ? ' (project)' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Quality</span>
+              <select value={settings.quality} onChange={(e) => st.updateSettings({ quality: e.target.value as QualityPreset })}>
+                {(Object.keys(QUALITY_LABELS) as QualityPreset[]).map((q) => (
+                  <option key={q} value={q}>
+                    {QUALITY_LABELS[q]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Format</span>
+              <select value={settings.format} onChange={(e) => st.updateSettings({ format: e.target.value as 'mp4' | 'webm' })}>
+                <option value="mp4">MP4 (H.264 + AAC)</option>
+                <option value="webm">WebM (VP9 + Opus)</option>
+              </select>
+            </label>
+            <div className="exp-row">
+              <span>Range</span>
+              <span>Whole project ({formatDuration(duration)})</span>
+            </div>
+          </fieldset>
 
-        <div className="exp-info" data-testid="export-info">
-          <div>
-            Output: {plan.width}×{plan.height}, {plan.fps} fps, {plan.frameCount} frames, ~{(plan.videoBitrate / 1e6).toFixed(1)} Mbit/s video
+          <div className="exp-info" data-testid="export-info">
+            <div>
+              Output: {plan.width}×{plan.height}, {plan.fps} fps, {plan.frameCount} frames, ~{(plan.videoBitrate / 1e6).toFixed(1)} Mbit/s video
+            </div>
+            <div>
+              Encoding:{' '}
+              {st.probing ? 'checking browser support…' : st.codecs ? <strong data-testid="export-codec">{st.codecs.label}</strong> : '—'}
+            </div>
+            {st.codecs?.fallbackNote && <div className="exp-warn">{st.codecs.fallbackNote}</div>}
           </div>
-          <div>
-            Encoding:{' '}
-            {st.probing ? 'checking browser support…' : st.codecs ? <strong data-testid="export-codec">{st.codecs.label}</strong> : '—'}
-          </div>
-          {st.codecs?.fallbackNote && <div className="exp-warn">{st.codecs.fallbackNote}</div>}
+
+          {blocker && (
+            <p className="status-msg warning exp-blocker">
+              <Icon name="alert" size={14} />
+              <span>{blocker}</span>
+            </p>
+          )}
+
+          {running && (
+            <div className="exp-progress" role="status">
+              <div className="exp-bar">
+                <div style={{ width: `${Math.round((p?.fraction ?? 0) * 100)}%` }} />
+              </div>
+              <div className="exp-stats">
+                <span>
+                  {p?.phase === 'audio' ? 'Mixing audio…' : p?.phase === 'finalizing' ? 'Finalizing…' : `Frame ${p?.framesDone ?? 0} / ${p?.totalFrames ?? plan.frameCount}`}
+                </span>
+                <span>Elapsed {formatClock(p?.elapsedMs ?? 0)}</span>
+                <span>ETA {p?.etaMs != null ? formatClock(p.etaMs) : '—'}</span>
+              </div>
+            </div>
+          )}
+          {st.status === 'error' && st.error && (
+            <p className="status-msg error exp-error" role="alert">
+              Export failed: {st.error}
+            </p>
+          )}
+          {st.status === 'cancelled' && <p className="status-msg exp-note">Export cancelled.</p>}
+          {st.status === 'done' && st.result && (
+            <p className="status-msg success exp-note exp-done" data-testid="export-done">
+              {st.result.savedTo === 'file' ? 'Saved' : 'Downloaded'} <strong>{st.result.fileName}</strong> ({formatBytes(st.result.size)}) in{' '}
+              {st.result.seconds.toFixed(1)} s.{' '}
+              <a href={st.result.url} download={st.result.fileName} data-testid="export-download">
+                Download again
+              </a>
+            </p>
+          )}
         </div>
-
-        {blocker && <p className="exp-warn exp-blocker">{blocker}</p>}
-
-        {running && (
-          <div className="exp-progress" role="status">
-            <div className="exp-bar">
-              <div style={{ width: `${Math.round((p?.fraction ?? 0) * 100)}%` }} />
-            </div>
-            <div className="exp-stats">
-              <span>
-                {p?.phase === 'audio' ? 'Mixing audio…' : p?.phase === 'finalizing' ? 'Finalizing…' : `Frame ${p?.framesDone ?? 0} / ${p?.totalFrames ?? plan.frameCount}`}
-              </span>
-              <span>Elapsed {formatClock(p?.elapsedMs ?? 0)}</span>
-              <span>ETA {p?.etaMs != null ? formatClock(p.etaMs) : '—'}</span>
-            </div>
-          </div>
-        )}
-        {st.status === 'error' && st.error && (
-          <p className="exp-error" role="alert">
-            Export failed: {st.error}
-          </p>
-        )}
-        {st.status === 'cancelled' && <p className="exp-note">Export cancelled.</p>}
-        {st.status === 'done' && st.result && (
-          <p className="exp-note" data-testid="export-done">
-            {st.result.savedTo === 'file' ? 'Saved' : 'Downloaded'} <strong>{st.result.fileName}</strong> ({formatBytes(st.result.size)}) in{' '}
-            {st.result.seconds.toFixed(1)} s.{' '}
-            <a href={st.result.url} download={st.result.fileName} data-testid="export-download">
-              Download again
-            </a>
-          </p>
-        )}
 
         <footer className="exp-foot">
           {running ? (

@@ -3,6 +3,7 @@ import { useEditorStore, type Clip, type EffectInstance } from '../../core';
 import { addEffectToClips, applyPresetToClips, supportsEffects } from './actions';
 import { effectsToFilterString } from './apply';
 import { FILTER_PRESETS, listEffectDefinitions, matchPreset, type FilterPreset } from './definitions';
+import { EffectIcon } from './ui';
 import './effects.css';
 
 function thumbStyle(effects: FilterPreset['effects'], thumb: string | undefined): CSSProperties {
@@ -48,7 +49,7 @@ export default function EffectsPanel() {
           ? 'Select a video or image clip on the timeline to apply filters and effects.'
           : `Applying to ${targets.length} clip${targets.length > 1 ? 's' : ''}.`}
       </p>
-      <h4 className="fx-heading">Filters</h4>
+      <h4 className="section-title fx-heading">Filters</h4>
       <div className="fx-grid fx-presets">
         <button
           type="button"
@@ -76,7 +77,7 @@ export default function EffectsPanel() {
           </button>
         ))}
       </div>
-      <h4 className="fx-heading">Effects</h4>
+      <h4 className="section-title fx-heading">Effects</h4>
       <div className="fx-grid fx-effects">
         {listEffectDefinitions().map((d) => (
           <button
@@ -89,9 +90,9 @@ export default function EffectsPanel() {
             title={`Add ${d.label}`}
           >
             <span className="fx-chip-icon" aria-hidden>
-              {d.icon}
+              <EffectIcon def={d} />
             </span>
-            {d.label}
+            <span className="fx-chip-label">{d.label}</span>
           </button>
         ))}
       </div>

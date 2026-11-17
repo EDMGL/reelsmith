@@ -16,11 +16,21 @@ export function isTypingTarget(target: EventTarget | null): boolean {
 
 const ZOOM_STEP = 1.25;
 
+/** True if the page has a real text selection (Cmd/Ctrl+C/X must then copy that text natively). */
+function hasTextSelection(): boolean {
+  const sel = typeof window !== 'undefined' ? window.getSelection?.() : null;
+  return !!sel && !sel.isCollapsed && sel.toString().length > 0;
+}
+
 /**
  * Global keyboard shortcuts:
  * Space play/pause · S split at playhead · Del/Backspace delete · Shift+Del ripple delete ·
  * Cmd/Ctrl+Z undo · Shift+Cmd/Ctrl+Z or Cmd/Ctrl+Y redo · Cmd/Ctrl+D duplicate · Cmd/Ctrl+A select all ·
  * ←/→ one frame (Shift: one second) · Home/End · +/- zoom · Esc clear selection.
+ * Clipboard (internal, never the system clipboard): Cmd/Ctrl+C copy · Cmd/Ctrl+X cut ·
+ * Shift+Cmd/Ctrl+X ripple cut · Cmd/Ctrl+V paste at the playhead.
+ * Shift+Cmd/Ctrl+A (or Alt+Shift+A) detach audio — or restore it when the selection is already detached.
+ * Nothing fires while typing in a text field, so native copy/paste there is untouched.
  */
 export function handleShortcut(e: KeyboardEvent): boolean {
   if (isTypingTarget(e.target)) return false;
@@ -34,6 +44,27 @@ export function handleShortcut(e: KeyboardEvent): boolean {
   }
   if (mod && key.toLowerCase() === 'y') {
     s.redo();
+    return true;
+  }
+  // Detach / restore audio: Shift+Cmd/Ctrl+A, or Alt+Shift+A (Chrome on macOS reserves Shift+Cmd+A).
+  if (e.shiftKey && (mod || e.altKey) && (e.code === 'KeyA' || key.toLowerCase() === 'a')) {
+    if (s.selectedClipIds.length === 0) return false;
+    if (s.detachAudio().length === 0) s.restoreAudio();
+    return true;
+  }
+  if (mod && !e.altKey && key.toLowerCase() === 'c') {
+    if (s.selectedClipIds.length === 0 || hasTextSelection()) return false;
+    s.copyClips();
+    return true;
+  }
+  if (mod && !e.altKey && key.toLowerCase() === 'x') {
+    if (s.selectedClipIds.length === 0 || hasTextSelection()) return false;
+    s.cutClips(undefined, { ripple: e.shiftKey });
+    return true;
+  }
+  if (mod && !e.altKey && key.toLowerCase() === 'v') {
+    if (!s.clipboard) return false;
+    s.pasteClips();
     return true;
   }
   if (mod && key.toLowerCase() === 'a') {

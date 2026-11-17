@@ -48,7 +48,7 @@ import {
   type MediaKind,
   type MediaSlot,
 } from './mediaPool';
-import { elementRate, mediaNeedsAt, sourceTimeAt, upcomingClips, visibleClipsAt } from './timeline';
+import { elementRate, isAudible, mediaNeedsAt, sourceTimeAt, upcomingClips, visibleClipsAt } from './timeline';
 
 type Store = Pick<typeof useEditorStore, 'getState' | 'subscribe'>;
 
@@ -267,7 +267,9 @@ export class ErdemcutEngine implements PlaybackEngine {
       const asset = project.assets[clip.assetId]!;
       const slot = this.previewPool.acquire(clip.id, clip.type === 'audio' ? 'audio' : 'video', asset.id, asset.objectURL);
       keep.add(clip.id);
-      this.connectAudio(slot);
+      // Silent clips (volume 0, muted track, no audio track) never get a Web Audio route:
+      // their element stays muted, so no audio work is done for them.
+      if (need.audio) this.connectAudio(slot);
       this.setGain(slot, need.audio ? clipGainAt(clip, t - clip.start, track) : 0);
       const el = slot.el;
       const expected = sourceTimeAt(clip, t);
@@ -291,7 +293,7 @@ export class ErdemcutEngine implements PlaybackEngine {
       }
     }
 
-    for (const { clip } of upcomingClips(project, t, PRELOAD_WINDOW)) {
+    for (const { clip, track } of upcomingClips(project, t, PRELOAD_WINDOW)) {
       const asset = 'assetId' in clip ? project.assets[clip.assetId] : undefined;
       if (!asset || asset.status !== 'ready') continue;
       if (clip.type === 'image') {
@@ -301,7 +303,7 @@ export class ErdemcutEngine implements PlaybackEngine {
       if (!isMediaClip(clip) || keep.has(clip.id)) continue;
       const slot = this.previewPool.acquire(clip.id, clip.type === 'audio' ? 'audio' : 'video', asset.id, asset.objectURL);
       keep.add(clip.id);
-      this.connectAudio(slot);
+      if (isAudible(project, clip, track)) this.connectAudio(slot);
       this.setGain(slot, 0);
       const el = slot.el;
       const startSource = clip.sourceIn;
@@ -323,8 +325,8 @@ export class ErdemcutEngine implements PlaybackEngine {
 
   private ensureAudioContext(): void {
     if (!this.audioCtx) {
+      // Elements are routed lazily by syncMedia, only for clips that are audible.
       this.audioCtx = this.deps.createAudioContext();
-      if (this.audioCtx) for (const slot of this.previewPool.values()) this.connectAudio(slot);
     }
     if (this.audioCtx && this.audioCtx.state === 'suspended') void this.audioCtx.resume().catch(() => undefined);
   }
@@ -445,7 +447,7 @@ export class ErdemcutEngine implements PlaybackEngine {
     if (asset.kind === 'image') return this.images.frame(asset);
     if (asset.kind !== 'video') return null;
     const own = pool.get(clip.id);
-    const slot = own && own.assetId === assetId ? own : pool.findByAsset(assetId, sourceTime);
+    const slot = own && own.kind === 'video' && own.assetId === assetId ? own : pool.findByAsset(assetId, sourceTime, 'video');
     return videoFrame(slot?.el);
   }
 

@@ -1,4 +1,6 @@
+import { useState, type ReactNode } from 'react';
 import {
+  Icon,
   Slot,
   formatDuration,
   getProjectDuration,
@@ -10,16 +12,87 @@ import {
   type Id,
   type InspectorDefinition,
   type InspectorProps,
+  type IconName,
   type Project,
 } from '../core';
+
+const COLLAPSE_KEY = 'erdemcut:inspector-collapsed';
+
+function loadCollapsed(): Set<string> {
+  try {
+    const v: unknown = JSON.parse(window.localStorage.getItem(COLLAPSE_KEY) ?? '[]');
+    return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+/** Shared across sections so every section reads the same remembered state. */
+const collapsed = loadCollapsed();
+
+/** Inspector card with a clickable header that collapses its body (remembered per section id). */
+export function InspectorSection({ id, title, extra, children }: { id: string; title: ReactNode; extra?: ReactNode; children: ReactNode }) {
+  const [open, setOpen] = useState(() => !collapsed.has(id));
+  const toggle = () => {
+    const next = !open;
+    if (next) collapsed.delete(id);
+    else collapsed.add(id);
+    try {
+      window.localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...collapsed]));
+    } catch {
+      /* not remembered */
+    }
+    setOpen(next);
+  };
+  const bodyId = `insp-body-${id.replace(/[^a-z0-9_-]/gi, '-')}`;
+  return (
+    <section className={open ? 'inspector-section' : 'inspector-section collapsed'}>
+      <h3 className="inspector-section-head">
+        <button type="button" className="inspector-toggle" aria-expanded={open} aria-controls={bodyId} onClick={toggle}>
+          <Icon name="chevron-right" size={14} className="inspector-chevron" />
+          <span className="inspector-title">{title}</span>
+          {extra}
+        </button>
+      </h3>
+      {open && (
+        <div className="inspector-body" id={bodyId}>
+          {children}
+        </div>
+      )}
+    </section>
+  );
+}
+
+const TYPE_META: Record<Clip['type'], { label: string; icon: IconName }> = {
+  video: { label: 'Video clip', icon: 'film' },
+  audio: { label: 'Audio clip', icon: 'waveform' },
+  image: { label: 'Image clip', icon: 'image' },
+  text: { label: 'Text clip', icon: 'text' },
+  subtitle: { label: 'Subtitle', icon: 'subtitles' },
+};
+
+function InspectorHeader({ icon, kind, title, typeClass }: { icon: IconName; kind: string; title: string; typeClass?: string }) {
+  return (
+    <div className="inspector-header">
+      <span className={`inspector-type-icon${typeClass ? ` ${typeClass}` : ''}`} aria-hidden>
+        <Icon name={icon} size={16} />
+      </span>
+      <div className="inspector-header-text">
+        <span className="inspector-kind">{kind}</span>
+        <span className="inspector-name" title={title}>
+          {title}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 function ProjectInfo() {
   const project = useEditorStore((s) => s.project);
   const setBg = useEditorStore((s) => s.setBackgroundColor);
   const setFps = useEditorStore((s) => s.setFps);
   return (
-    <div className="inspector-section">
-      <h3>Project</h3>
+    <>
+    <InspectorSection id="shell:project" title="Project">
       <dl className="kv">
         <dt>Canvas</dt>
         <dd>
@@ -49,8 +122,15 @@ function ProjectInfo() {
           <input id="proj-bg" type="color" value={project.backgroundColor} onChange={(e) => setBg(e.target.value)} />
         </dd>
       </dl>
-      <p className="muted small">Select a clip on the timeline to edit its properties.</p>
+    </InspectorSection>
+    <div className="empty-state inspector-empty">
+      <span className="empty-state-icon" aria-hidden>
+        <Icon name="pointer" size={20} />
+      </span>
+      <span className="empty-state-title">Nothing selected</span>
+      <span className="empty-state-text">Select a clip on the timeline to edit its properties.</span>
     </div>
+    </>
   );
 }
 
@@ -64,6 +144,7 @@ export function InspectorPanel() {
     if (selectedIds.length > 1) return <MultiInspector ids={selectedIds} project={project} sections={sections} />;
     return (
       <div className="inspector">
+        <InspectorHeader icon="sliders" kind="Project settings" title={project.name} />
         <ProjectInfo />
       </div>
     );
@@ -73,12 +154,12 @@ export function InspectorPanel() {
   const props: InspectorProps = { clip, track, project, targets: [clip.id] };
   return (
     <div className="inspector">
-      {matching.length === 0 && <p className="muted small">No inspector for {clip.type} clips.</p>}
+      <InspectorHeader icon={TYPE_META[clip.type].icon} kind={TYPE_META[clip.type].label} title={clip.name} typeClass={`type-${clip.type}`} />
+      {matching.length === 0 && <p className="muted small inspector-note">No inspector for {clip.type} clips.</p>}
       {matching.map((d) => (
-        <section key={d.id} className="inspector-section">
-          <h3>{d.title}</h3>
+        <InspectorSection key={d.id} id={d.id} title={d.title ?? d.id}>
           <Slot name={d.id} component={d.component} props={props} />
-        </section>
+        </InspectorSection>
       ))}
     </div>
   );
@@ -101,20 +182,26 @@ function MultiInspector({ ids, project, sections }: { ids: readonly Id[]; projec
       if (!track) return null;
       const props: InspectorProps = { clip: anchor, track, project, targets: targets.map((c) => c.id) };
       return (
-        <section key={d.id} className="inspector-section">
-          <h3>
-            {d.title}
-            {targets.length < clips.length && <span className="multi-count"> · {targets.length} of {clips.length}</span>}
-          </h3>
+        <InspectorSection
+          key={d.id}
+          id={d.id}
+          title={d.title ?? d.id}
+          extra={targets.length < clips.length && <span className="multi-count"> · {targets.length} of {clips.length}</span>}
+        >
           <Slot name={d.id} component={d.component} props={props} />
-        </section>
+        </InspectorSection>
       );
     });
   return (
     <div className="inspector" data-testid="multi-inspector">
-      <div className="inspector-section">
-        <h3>{clips.length} clips selected</h3>
-        <p className="muted small">Changes below apply to all selected clips. You can also move, delete or duplicate them together.</p>
+      <div className="inspector-header">
+        <span className="inspector-type-icon" aria-hidden>
+          <Icon name="layers" size={16} />
+        </span>
+        <div className="inspector-header-text">
+          <h3 className="inspector-name">{clips.length} clips selected</h3>
+          <span className="inspector-kind">Changes apply to every selected clip; move, delete or duplicate them together.</span>
+        </div>
       </div>
       {rendered}
     </div>

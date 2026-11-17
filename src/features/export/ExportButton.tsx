@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react';
+import { Icon } from '../../core';
 import { useExportStore } from './exportStore';
 
 const ExportDialog = lazy(() => import('./ExportDialog'));
@@ -16,6 +17,7 @@ export default function ExportButton() {
         title="Export the project to a video file"
         onClick={() => useExportStore.getState().openDialog()}
       >
+        <Icon name="export" />
         {running ? `Exporting ${Math.round(fraction * 100)}%` : 'Export'}
       </button>
       {open && (

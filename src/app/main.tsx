@@ -4,6 +4,7 @@ import { restoreProject, startAutosave } from '../core';
 import { App } from './App';
 import { registerFeatures } from './registerFeatures';
 import './theme.css';
+import './shell.css';
 
 registerFeatures();
 

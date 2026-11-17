@@ -1,47 +1,70 @@
-/* P3 shared styles (text, overlays, subtitles). Prefixed p3- to avoid collisions. */
+/* P3 shared styles (text, overlays, subtitles). Prefixed p3- to avoid collisions. Tokens only (see app/theme.css). */
 .p3-panel {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 .p3-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  padding: 10px;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+}
+.p3-toolbar > select {
+  height: var(--control-h);
+  max-width: 100%;
 }
 .p3-hint {
-  margin: 0 10px 8px;
+  margin: 0 var(--space-4) var(--space-3);
+  line-height: 1.5;
 }
 .p3-error {
+  margin: var(--space-0) 0;
   color: var(--danger);
-  margin: 2px 0;
 }
+
+/* Text style presets */
 .p3-preset-grid {
   list-style: none;
   margin: 0;
-  padding: 0 10px 10px;
+  padding: 0 var(--space-4) var(--space-4);
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: var(--space-3);
 }
 .p3-preset {
   width: 100%;
   height: 64px;
   display: grid;
   place-items: center;
-  background: #0b0c10;
+  padding: 0 var(--space-2);
+  background: var(--surface-0);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+  color: var(--text);
   cursor: pointer;
   overflow: hidden;
-  font-size: 18px;
+  font-size: var(--fs-xl);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
 }
 .p3-preset:hover {
-  border-color: var(--accent);
+  background: var(--surface-3);
+  border-color: var(--border-hover);
+}
+.p3-preset:active {
+  transform: translateY(1px);
+}
+.p3-preset[draggable='true'] {
+  cursor: grab;
 }
 .p3-preset-sample {
   max-width: 95%;
@@ -49,39 +72,46 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Inspector controls */
 .p3-textarea {
   width: 100%;
+  min-height: 64px;
   resize: vertical;
-  min-height: 56px;
   user-select: text;
 }
 .p3-check,
 .p3-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-dim);
+  gap: var(--space-2);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.p3-check {
+  flex-wrap: wrap;
 }
 .p3-toggle {
-  margin-top: 4px;
+  margin-top: var(--space-1);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
   color: var(--text);
+  font-weight: var(--fw-medium);
 }
 .p3-sub {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding-left: 10px;
-  border-left: 2px solid var(--border);
+  gap: var(--space-3);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--accent-border);
 }
 .p3-inspector input[type='color'] {
-  width: 32px;
-  height: 22px;
-  padding: 0;
-  border: 1px solid var(--border);
-  background: none;
   flex: none;
 }
 .p3-inspector select {
+  flex: 1;
   min-width: 0;
+}
+.p3-inspector .segmented {
+  max-width: 100%;
 }

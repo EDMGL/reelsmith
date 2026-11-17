@@ -87,6 +87,7 @@ feature can't take down the app.
   `order` ascending = compositing order (0 drawn first/bottom). The timeline lists highest order on top; audio tracks are kept at the low end. Accepted clip types per kind: `TRACK_ACCEPTS` (`video:[video,image]`, `overlay:[video,image,text]`, `audio:[audio]`, `text:[text]`, `subtitle:[subtitle]`).
 - `Clip` = discriminated union on `type`: `VideoClip | AudioClip | ImageClip | TextClip | SubtitleClip` (`ClipOf<'text'>` etc.). Common: `id, trackId, start, duration, name, effects: EffectInstance[], fadeIn, fadeOut` (all seconds).
   - video/audio (`MediaSourceFields`): `assetId, sourceIn, sourceOut, speed, volume`. Invariant `duration = (sourceOut - sourceIn) / speed`; source time = `clipSourceTime(clip, t)`. **Video clips carry their own audio** (no separate audio clip is created on import).
+  - **Detached audio** ("Detach audio"): the video clip gets `audioDetached: true`, `volume: 0` (engines treat it as silent), `volumeBeforeDetach` and `detachedAudioClipId`; a new `audio` clip for the SAME asset (same start/duration/sourceIn/Out/speed/fades/volume) gets `detachedFromClipId`. The ids are hints only (no linking: split/trim/move treat both as independent clips); copies drop a link whose partner was not copied. An `audio` clip may reference a `video` asset.
   - video/image/text: `transform { x, y, scale, rotation, opacity }` — `x,y` = clip **center** as a fraction of canvas size (0.5/0.5 = centered); `scale` 1 = natural fit (media: contain-fit in canvas; text: multiplies `style.fontSize`); `rotation` degrees clockwise.
   - text: `text, style: TextStyle` (`fontFamily, fontSize, fontWeight, italic, color, stroke, shadow, align, background, lineHeight`; sizes in project px).
   - subtitle: `text, styleId, styleOverride?` → resolve with `resolveSubtitleStyle(project, clip)` (`SubtitleStyle` adds `bottomMargin`, `maxWidth` fractions). `DEFAULT_SUBTITLE_STYLE_ID = 'default'` always exists.
@@ -104,9 +105,13 @@ TSDoc are in `src/core/store.ts`. Overview:
 - subtitle styles: `updateSubtitleStyle(id, patch) → boolean` — patches `project.subtitleStyles[id]` (id immutable) as one undo step (transaction-aware); returns false with no history entry for an unknown id or an unchanged patch. Resolve fallbacks (e.g. to `DEFAULT_SUBTITLE_STYLE_ID`) before calling. Don't write `project` via `useEditorStore.setState` — use store actions.
 - assets: `addAsset`, `updateAsset` (both *not* undo steps), `removeAsset` (undoable, removes its clips)
 - tracks: `addTrack(kind, opts?) → id`, `removeTrack`, `updateTrack(id, {name,muted,locked,hidden})`, `moveTrack(id, order)`
-- clips: `addClip(clip) → boolean`, `insertClip(clip, {trackId?, start?}) → id|null` (auto-picks or creates a track), `addAssetClip(assetId, opts?)`, `updateClip(id, patch) → boolean`, `removeClips(ids)`, `moveClip(id, start, trackId?) → boolean`, `moveClips(ids, delta) → boolean`, `trimClip(id, 'start'|'end', time) → boolean`, `splitClip(id, t) → newId|null`, `splitAtPlayhead() → ids`, **`rippleDeleteRanges(ranges: {start,end}[], {trackIds?}) → boolean`**, `rippleDeleteClips(ids)`, `duplicateClips(ids) → ids`
+- clips: `addClip(clip) → boolean`, **`addClips(clips: readonly Clip[]) → Id[]`** (batch: ONE store update + ONE undo step, transaction-aware; each clip validated like `addClip`, rejected ones are skipped and the rest added; returns the added ids — use it for bulk inserts such as subtitle cue import), `insertClip(clip, {trackId?, start?}) → id|null` (auto-picks or creates a track), `addAssetClip(assetId, opts?)`, `updateClip(id, patch) → boolean`, `removeClips(ids)`, `moveClip(id, start, trackId?) → boolean`, `moveClips(ids, delta) → boolean`, `trimClip(id, 'start'|'end', time) → boolean`, `splitClip(id, t) → newId|null`, `splitAtPlayhead() → ids`, **`rippleDeleteRanges(ranges: {start,end}[], {trackIds?}) → boolean`**, `rippleDeleteClips(ids)`, `duplicateClips(ids) → ids`
+- moves across tracks: `moveClipsTo(moves: {id, start, trackId}[]) → boolean` (all-or-nothing, one undo step)
+- **clipboard** (internal, never the system clipboard, not undoable/persisted): `clipboard: ClipboardContent | null`, `copyClips(ids?) → count`, `cutClips(ids?, {ripple?}) → count` (copy + delete/ripple-delete, ONE undo step, locked clips skipped), `pasteClips({time?, trackId?}) → newIds` (earliest clip at `time` = playhead by default; relative offsets and per-track grouping kept; original track → nearest free compatible track → new track next to it, so paste never silently fails; new ids; selects the pasted clips; one undo step). `ids` default to the selection.
+- **detach audio**: `detachAudio(ids?) → audioClipIds` (video clips whose asset `hasAudio`; audio goes to the top-most audio track free at that range, else a new audio track; one undo step), `restoreAudio(ids?) → boolean` (restores volume, clears the flags, removes the detached audio clip if it still exists and no other split piece still uses it; audio ids stand for their video), `selectLinkedClips(ids?)`. Pure versions: `ops.detachAudio`, `ops.restoreAudio`, `ops.canDetachAudio`, `ops.canRestoreAudio`, `ops.linkedClipIds`, `ops.copyClips`, `ops.pasteClips`, `ops.moveClipsTo`, `ops.nearestFreeDelta`.
 - selection/view: `selectedClipIds`, `selectClips(ids, 'replace'|'toggle'|'add')`, `clearSelection`, `selectedTrackId`, `selectTrack`, `zoom` (px per second), `setZoom`
-- playback: `currentTime`, `isPlaying`, `seekNonce`, `setCurrentTime(t)` (user seek, bumps `seekNonce`), `setPlaybackTime(t)` (engine only), `play`, `pause`, `togglePlay`
+- playback: `currentTime`, `isPlaying`, `seekNonce`, `setCurrentTime(t)` (user seek, bumps `seekNonce`), `setPlaybackTime(t)` (engine only; hot path — changes nothing but `currentTime`, no-op for the same value), `play`, `pause`, `togglePlay`
+- Performance rule for subscribers: selectors run on EVERY store update, including each playback tick. Never scan all clips in a selector; subscribe to `currentTime` only in tiny components (or imperatively via `useEditorStore.subscribe`). `selectClips`/`clearSelection`/`setZoom` keep identities when nothing changes.
 - history: `undo`, `redo`, `canUndo()`, `canRedo()`, `past`, `future`, `beginTransaction(label)`, `commitTransaction()`, `cancelTransaction()`, `transact(label, fn)`
 
 Editing rules (implemented as pure functions in `ops`, exported as `import { ops } from core`):
@@ -215,7 +220,21 @@ interface PreviewOverlayProps {
 
 Drag & drop: the media library drags `ASSET_DRAG_MIME` (asset id). Panels can drag a JSON
 `Clip` template with `CLIP_TEMPLATE_DRAG_MIME`; the timeline assigns id/track/start and calls
-`insertClip`.
+`insertClip`. Optional: call `setDragPayload({ kind: 'asset', assetId } | { kind: 'clip-template', clip })` on
+dragstart and `setDragPayload(null)` on dragend so the timeline can draw the exact landing ghost while
+hovering (drag data is unreadable before drop). OS files: `isFileDrag(dataTransfer)`, and
+`importDroppedFiles(files) → { imported: assetIds, failed: names }` (implemented by the media package via
+`registerFileImporter`). Files dropped anywhere not handled (preview, empty app area) are imported and
+appended at the end of the timeline; a drop target that handles files itself must `preventDefault()`.
+
+**Timeline drop/move placement** (`features/timeline/placement.ts`): a clip lands on the hovered slot if
+free, else on the nearest free slot of that track within 100 px, else on a NEW track next to the hovered
+one; above the top track / below the last track = new track (audio tracks stay at the low end). An
+incompatible hovered track redirects to the nearest compatible one. The ghost always shows exactly where
+the drop will land (red only if it would be rejected, with a notice). Every gesture is ONE undo step and
+always ends: Esc, pointercancel, window blur and tab switch cancel it (trims roll back their transaction).
+Timeline rendering: the playhead moves imperatively (no React render during playback), rows/clips are
+memoized and only clips near the visible window are mounted.
 
 ### Utilities
 
@@ -289,6 +308,25 @@ preview only). **■ Stop**, Space or the end of the timeline ends the take. The
 WAV (MediaRecorder WebM has no seekable duration), imported as an asset and placed at the start
 time on a "Voiceover" audio track (a new "Voiceover N" track if the first is busy); one undo step.
 
+## Music library
+
+**Music** panel (`src/features/music/`): built-in background music and sound effects, all **original
+and generated in the browser** (no downloads, no licences, free to use in your videos). Tracks are
+small seeded recipes (`catalogue/tracks.ts`): song form, roman-numeral progressions with voice
+leading, step-pattern drums with fills, bass/chord/arp/melody generators (`synth/compose.ts`),
+humanised timing/velocity. They are rendered with an `OfflineAudioContext` (Web Audio voices plus
+JS-modelled piano/plucked-string/FM/mallet samples, generated reverb impulse, tempo delay, sidechain
+ducking); note tails are wrapped into the loop start so loops are seamless, then a circular
+look-ahead limiter and BS.1770 normalisation bring every loop to −16 LUFS / −1 dBFS (effects: −14
+LUFS momentary). Each track has 2–3 variations (seeds, “reroll”); renders are cached (LRU, 192 MB).
+**+ Add** (or drag, once rendered) loops the track to fit the project (or 15/30/60 s), from 0:00
+or the playhead, at 30 % volume with 0.5 s / 2 s fades, on a free “Music” audio track — one undo
+step. Effects go to the playhead on a free “SFX” track. Generated audio is stored as a 44.1 kHz
+16-bit WAV asset in the normal media blob store (persists like imported media): ≈10.6 MB per
+minute stereo; renders longer than 4 minutes are stored as mono (≈5.3 MB/min) to bound the size.
+Previews use their own `AudioContext` (never the editor engine), one at a time, and stop when the
+timeline plays.
+
 ## Auto captions (on-device Whisper)
 
 Subtitles panel → pick a model and language → **Auto captions**. Speech-to-text runs entirely in
@@ -320,4 +358,8 @@ edit every selected clip in one undo step (`store.updateClips`).
 
 Space play/pause · S split at playhead · Del/Backspace delete · Shift+Del ripple delete ·
 ⌘/Ctrl+Z undo · ⇧⌘/Ctrl+Shift+Z or Ctrl+Y redo · ⌘/Ctrl+D duplicate · ⌘/Ctrl+A select all · ←/→ one frame (Shift: 1 s) ·
-Home start · +/- zoom · ⌘/Ctrl+wheel zoom at cursor · Alt while dragging toggles snapping · Esc clear selection.
+Home start · +/- zoom · ⌘/Ctrl+wheel zoom at cursor · Alt while dragging toggles snapping · Esc clear selection / cancel a drag.
+⌘/Ctrl+C copy · ⌘/Ctrl+X cut · ⇧⌘/Ctrl+Shift+X ripple cut · ⌘/Ctrl+V paste at the playhead · ⇧⌘/Ctrl+Shift+A (or ⌥⇧A)
+detach audio (again: restore audio). Clipboard shortcuts never fire in text fields or while page text is selected.
+Right-click a clip: Cut, Copy, Paste, Duplicate, Split here, Delete, Ripple delete, Detach/Restore audio, Select linked;
+right-click empty lane space: Paste here.

@@ -211,9 +211,27 @@ export interface VideoClip extends ClipBase<'video'>, MediaSourceFields {
   transform: Transform;
   motion?: ClipMotion;
   shape?: ClipShape;
+  /**
+   * True once the clip's own audio was separated into an `audio` clip ("Detach
+   * audio"). The clip's `volume` is then 0 (engines treat it as silent) and the
+   * volume it had before is kept in `volumeBeforeDetach` so "Restore audio" can
+   * bring it back. Absent/false = the clip plays its own audio as usual.
+   */
+  audioDetached?: boolean;
+  /** Volume before "Detach audio" (restored by "Restore audio"). Only meaningful with `audioDetached`. */
+  volumeBeforeDetach?: number;
+  /**
+   * Id of the audio clip created by "Detach audio" (it may since have been
+   * deleted, split or moved — clips are independent, this is only a hint used by
+   * "Restore audio" and "Select linked").
+   */
+  detachedAudioClipId?: Id;
 }
 
-export interface AudioClip extends ClipBase<'audio'>, MediaSourceFields {}
+export interface AudioClip extends ClipBase<'audio'>, MediaSourceFields {
+  /** Set on an audio clip created by "Detach audio": the video clip it came from (hint only, no linking). */
+  detachedFromClipId?: Id;
+}
 
 /** Still image. Has no source bounds: duration is freely trimmable. */
 export interface ImageClip extends ClipBase<'image'> {
@@ -322,6 +340,20 @@ export interface Project {
   /** All imported assets keyed by id. */
   assets: Record<Id, MediaAsset>;
   subtitleStyles: Record<Id, SubtitleStyle>;
+}
+
+/**
+ * Content of the editor's internal clip clipboard (Cut / Copy / Paste). Never
+ * written to the system clipboard. Clips are snapshots (plain data); `tracks`
+ * remembers the source tracks so paste can recreate the track layout.
+ */
+export interface ClipboardContent {
+  /** Snapshots of the copied clips (original ids/trackIds/starts). */
+  clips: Clip[];
+  /** Source tracks of the copied clips (id, kind, order at copy time). */
+  tracks: Pick<Track, 'id' | 'kind' | 'order'>[];
+  /** Earliest start of the copied clips: paste puts this time at the paste position. */
+  start: number;
 }
 
 /** A half-open time interval [start, end) in seconds. */

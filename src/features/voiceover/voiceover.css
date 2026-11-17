@@ -1,91 +1,116 @@
+/* Voiceover panel (tokens only; see app/theme.css). */
 .vo-panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  overflow-y: auto;
+  gap: var(--space-4);
   height: 100%;
-  box-sizing: border-box;
+  min-height: 0;
+  padding: var(--space-4);
+  overflow-y: auto;
+  overflow-x: hidden;
 }
-.vo-title {
-  margin: 0;
-  font-size: 14px;
+.vo-panel > * {
+  flex-shrink: 0;
 }
 .vo-msg {
   margin: 0;
-  font-size: 12px;
   color: var(--text-dim);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
 }
-.vo-error {
-  color: var(--danger);
+.vo-title + .vo-msg {
+  margin-top: calc(-1 * var(--space-2));
 }
-.vo-ok {
-  color: var(--accent);
+.vo-status {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.vo-status .icon {
+  margin-top: 1px;
 }
 .vo-tip {
-  margin-top: 4px;
+  font-size: var(--fs-xs);
 }
+
+/* Settings card */
 .vo-group {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 8px 10px;
-  margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-3);
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+}
+.vo-group:disabled {
+  opacity: 0.6;
 }
 .vo-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
+  gap: var(--space-1);
   color: var(--text-dim);
+  font-size: var(--fs-sm);
 }
 .vo-field select {
   width: 100%;
+  color: var(--text);
 }
 .vo-check {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
 }
+
+/* Stage: countdown / live timer / idle hint + level meter */
 .vo-stage {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  min-height: 110px;
-  border-radius: var(--radius);
-  background: var(--surface-2);
+  gap: var(--space-3);
+  min-height: 112px;
+  padding: var(--space-4);
   border: 1px solid var(--border);
-  padding: 12px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-0);
+  transition:
+    border-color var(--dur),
+    box-shadow var(--dur);
 }
 .vo-stage[data-status='recording'] {
-  border-color: var(--danger);
+  border-color: var(--record);
+  box-shadow: 0 0 0 1px var(--record);
 }
 .vo-countdown {
-  font-size: 48px;
-  font-weight: 700;
-  font-family: var(--mono);
   color: var(--accent);
+  font-family: var(--mono);
+  font-size: calc(var(--fs-xl) * 2.5);
+  font-weight: var(--fw-bold);
+  line-height: 1;
 }
 .vo-live {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-weight: 600;
+  gap: var(--space-3);
+  color: var(--text);
+  font-weight: var(--fw-semibold);
   letter-spacing: 0.06em;
 }
 .vo-time {
   font-family: var(--mono);
-  font-size: 20px;
+  font-size: var(--fs-xl);
+  font-variant-numeric: tabular-nums;
 }
 .vo-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--danger);
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  background: var(--record);
   animation: vo-pulse 1s ease-in-out infinite;
 }
 @keyframes vo-pulse {
@@ -94,27 +119,27 @@
   }
 }
 .vo-idle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
   color: var(--text-dim);
-  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
 }
 .vo-meter {
   width: 100%;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--surface-3);
-  overflow: hidden;
 }
-.vo-meter > div {
-  height: 100%;
-  background: var(--accent);
-  transition: width 0.05s linear;
+.vo-meter > span {
+  transition: width 50ms linear;
 }
+
+/* Record / stop / cancel */
 .vo-actions {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: var(--space-3);
 }
 .vo-rec {
-  flex: 1;
-  font-size: 14px;
-  padding: 8px;
+  flex: 1 1 140px;
 }

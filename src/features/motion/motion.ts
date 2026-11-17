@@ -1,5 +1,5 @@
 /** Motion ("zoom & pan") presets and store actions. Every exported action is ONE undo step. */
-import { getSortedTracks, useEditorStore, type Clip, type ClipMotion, type Id, type MotionPreset } from '../../core';
+import { getSortedTracks, getTrackClipsAt, useEditorStore, type Clip, type ClipMotion, type Id, type MotionPreset } from '../../core';
 
 export const MOTION_PRESETS: readonly { preset: MotionPreset; label: string; icon: string; hint: string }[] = [
   { preset: 'none', label: 'None', icon: '○', hint: 'No motion' },
@@ -69,10 +69,12 @@ export function pictureClipAt(t: number): Extract<Clip, { type: 'video' | 'image
     const c = p.clips[id];
     if (supportsMotion(c) && covers(c)) return c;
   }
-  const tracks = getSortedTracks(p).slice().reverse();
+  // Topmost track first. The indexed lookup keeps this O(tracks x log clips): it runs
+  // in a toolbar `isEnabled` selector on every store update (every playback tick).
+  const tracks = getSortedTracks(p).reverse();
   for (const tr of tracks) {
     if (tr.hidden || tr.locked) continue;
-    const hit = Object.values(p.clips).find((c) => c.trackId === tr.id && supportsMotion(c) && covers(c));
+    const hit = getTrackClipsAt(p, tr.id, t).find((c) => supportsMotion(c) && covers(c));
     if (hit && supportsMotion(hit)) return hit;
   }
   return null;

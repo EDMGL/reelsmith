@@ -1,9 +1,9 @@
 import { useMemo, useRef, useState, type DragEvent } from 'react';
-import { ASSET_DRAG_MIME, formatDuration, useEditorStore, type MediaAsset } from '../../core';
+import { ASSET_DRAG_MIME, formatDuration, Icon, isFileDrag, setDragPayload, useEditorStore, type IconName, type MediaAsset } from '../../core';
 import { importFiles } from './importMedia';
 import './media.css';
 
-const KIND_ICON: Record<MediaAsset['kind'], string> = { video: '🎞', audio: '♪', image: '🖼' };
+const KIND_ICON: Record<MediaAsset['kind'], IconName> = { video: 'film', audio: 'waveform', image: 'image' };
 
 function AssetCard({ asset, usage, view }: { asset: MediaAsset; usage: number; view: 'grid' | 'list' }) {
   const addAssetClip = useEditorStore((s) => s.addAssetClip);
@@ -20,7 +20,10 @@ function AssetCard({ asset, usage, view }: { asset: MediaAsset; usage: number; v
         e.dataTransfer.setData(ASSET_DRAG_MIME, asset.id);
         e.dataTransfer.setData('text/plain', asset.name);
         e.dataTransfer.effectAllowed = 'copy';
+        // Lets the timeline preview the exact landing spot (drag data is unreadable until drop).
+        setDragPayload({ kind: 'asset', assetId: asset.id });
       }}
+      onDragEnd={() => setDragPayload(null)}
       title={asset.name}
     >
       <div className="asset-thumb">
@@ -35,14 +38,16 @@ function AssetCard({ asset, usage, view }: { asset: MediaAsset; usage: number; v
             />
           </svg>
         ) : (
-          <span className="asset-kind-icon">{KIND_ICON[asset.kind]}</span>
+          <span className="asset-kind-icon">
+            <Icon name={KIND_ICON[asset.kind]} size={22} />
+          </span>
         )}
         {asset.duration !== null && <span className="asset-badge">{formatDuration(asset.duration)}</span>}
         {usage > 0 && <span className="asset-used" title={`Used by ${usage} clip(s)`} />}
       </div>
       <div className="asset-meta">
         <span className="asset-name">{asset.name}</span>
-        <span className="muted small">
+        <span className="asset-sub">
           {asset.status === 'missing'
             ? 'File missing — re-import'
             : asset.kind === 'audio'
@@ -59,10 +64,10 @@ function AssetCard({ asset, usage, view }: { asset: MediaAsset; usage: number; v
           disabled={asset.status !== 'ready'}
           onClick={() => addAssetClip(asset.id)}
         >
-          +
+          <Icon name="plus" size={14} />
         </button>
         <button type="button" className="btn btn-small btn-icon-only btn-danger" aria-label={`Remove ${asset.name}`} title="Remove" onClick={onRemove}>
-          ×
+          <Icon name="close" size={14} />
         </button>
       </div>
     </li>
@@ -109,7 +114,7 @@ export function MediaPanel() {
     <div
       className={`media-panel${dragOver ? ' drag-over' : ''}`}
       onDragOver={(e) => {
-        if (e.dataTransfer.types.includes('Files')) {
+        if (isFileDrag(e.dataTransfer)) {
           e.preventDefault();
           setDragOver(true);
         }
@@ -121,6 +126,7 @@ export function MediaPanel() {
     >
       <div className="media-toolbar">
         <button type="button" className="btn btn-primary" onClick={() => inputRef.current?.click()}>
+          <Icon name="upload" />
           Import media
         </button>
         <input
@@ -144,17 +150,25 @@ export function MediaPanel() {
           </button>
         </div>
       </div>
-      {busy > 0 && <p className="muted small media-status">Importing {busy} file(s)…</p>}
+      {busy > 0 && (
+        <p className="status-msg media-status">
+          <span className="spinner" aria-hidden />
+          Importing {busy} file(s)…
+        </p>
+      )}
       {message && (
-        <p className="media-status error small" role="status">
+        <p className="status-msg error media-status" role="status">
+          <Icon name="alert" size={14} />
           {message}
         </p>
       )}
       {list.length === 0 ? (
-        <div className="media-empty" onClick={() => inputRef.current?.click()}>
-          <div className="media-empty-icon">⇪</div>
-          <p>Drop videos, audio or images here</p>
-          <p className="muted small">or click to browse</p>
+        <div className="empty-state media-empty" onClick={() => inputRef.current?.click()}>
+          <div className="empty-state-icon">
+            <Icon name="upload" size={20} />
+          </div>
+          <div className="empty-state-title">No media yet</div>
+          <p className="empty-state-text">Drop videos, audio or images here, or click Import media to browse.</p>
         </div>
       ) : (
         <ul className={`asset-list asset-list-${view}`}>

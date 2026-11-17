@@ -1,4 +1,5 @@
-import { containSize, inspectorTargets, useEditorStore, type ClipShape, type InspectorProps, type Transform } from '../../core';
+import { Icon, containSize, inspectorTargets, useEditorStore, type ClipShape, type IconName, type InspectorProps, type Transform } from '../../core';
+import './overlays.css';
 
 /**
  * Quick placement for image/video clips (the numeric transform lives in the
@@ -12,10 +13,10 @@ export function fillScale(assetW: number, assetH: number, canvasW: number, canva
 }
 
 const DEFAULT_SHAPE: ClipShape = { kind: 'rect', radius: 0.12, border: 0, borderColor: '#ffffff' };
-const SHAPES: readonly { kind: ClipShape['kind']; label: string; hint: string }[] = [
-  { kind: 'rect', label: '▭ Rect', hint: 'Plain rectangle' },
-  { kind: 'rounded', label: '▢ Rounded', hint: 'Rounded corners' },
-  { kind: 'circle', label: '◯ Circle', hint: 'Round mask (webcam bubble)' },
+const SHAPES: readonly { kind: ClipShape['kind']; label: string; icon: IconName; hint: string }[] = [
+  { kind: 'rect', label: 'Rect', icon: 'shape-rect', hint: 'Plain rectangle' },
+  { kind: 'rounded', label: 'Rounded', icon: 'shape-rounded', hint: 'Rounded corners' },
+  { kind: 'circle', label: 'Circle', icon: 'shape-circle', hint: 'Round mask (webcam bubble)' },
 ];
 
 export default function FitInspector(props: InspectorProps<'image' | 'video'>) {
@@ -45,7 +46,7 @@ export default function FitInspector(props: InspectorProps<'image' | 'video'>) {
   };
   return (
     <fieldset className="inspector-fields" disabled={track.locked}>
-      <div className="segmented" role="group" aria-label="Placement">
+      <div className="segmented ov-segmented" role="group" aria-label="Placement">
         <button type="button" onClick={() => set(() => ({ x: 0.5, y: 0.5, scale: 1, rotation: 0 }))} title="Whole image visible (contain)">
           Fit
         </button>
@@ -56,7 +57,7 @@ export default function FitInspector(props: InspectorProps<'image' | 'video'>) {
           Center
         </button>
       </div>
-      <div className="segmented" role="group" aria-label="Shape">
+      <div className="segmented ov-segmented" role="group" aria-label="Shape">
         {SHAPES.map((sh) => (
           <button
             key={sh.kind}
@@ -66,6 +67,7 @@ export default function FitInspector(props: InspectorProps<'image' | 'video'>) {
             title={sh.hint}
             onClick={() => setShape({ kind: sh.kind })}
           >
+            <Icon name={sh.icon} size={14} />
             {sh.label}
           </button>
         ))}
@@ -78,7 +80,7 @@ export default function FitInspector(props: InspectorProps<'image' | 'video'>) {
         </span>
       </label>
       {asset && (
-        <p className="muted small">
+        <p className="muted small ov-source">
           Source {asset.width}×{asset.height}
         </p>
       )}

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { InspectorProps } from '../../core';
+import { Icon, type InspectorProps } from '../../core';
 import { cancelNoiseReduction, clipsUsing, denoisedStrength, originalOf, reduceNoise, restoreOriginal, useDenoiseStore } from './denoiseStore';
 import { DENOISE_STRENGTHS, type DenoiseStrength } from './spectralGate';
 import './denoise.css';
@@ -22,8 +22,9 @@ export default function DenoiseInspector({ clip, project }: InspectorProps<'vide
     <div className="dn">
       <p className="dn-msg">Removes constant background noise (fan, hum, hiss, room tone) from this file's audio. Video is copied without re-encoding.</p>
       {applied && (
-        <p className="dn-badge" data-testid="denoise-applied">
-          ✓ Noise reduced · {DENOISE_STRENGTHS[applied].label}
+        <p className="status-msg success dn-badge" data-testid="denoise-applied">
+          <Icon name="check" size={14} />
+          Noise reduced · {DENOISE_STRENGTHS[applied].label}
         </p>
       )}
       <div className="segmented dn-strength" role="group" aria-label="Noise reduction strength">
@@ -36,8 +37,8 @@ export default function DenoiseInspector({ clip, project }: InspectorProps<'vide
       <p className="dn-msg">{DENOISE_STRENGTHS[strength].hint}</p>
       {job ? (
         <div className="dn-progress" role="status">
-          <div className="dn-bar">
-            <div style={{ width: `${Math.round(job.fraction * 100)}%` }} />
+          <div className="progress dn-bar">
+            <span style={{ width: `${Math.round(job.fraction * 100)}%` }} />
           </div>
           <small>
             {job.label} {Math.round(job.fraction * 100)}%
@@ -59,7 +60,12 @@ export default function DenoiseInspector({ clip, project }: InspectorProps<'vide
         </div>
       )}
       {clipCount > 1 && <p className="dn-msg">Applies to all {clipCount} clips from this file.</p>}
-      {message && <p className={`dn-msg ${message.kind === 'error' ? 'dn-error' : ''}`}>{message.text}</p>}
+      {message && (
+        <p className={`status-msg dn-status${message.kind === 'error' ? ' error' : ''}`}>
+          <Icon name={message.kind === 'error' ? 'alert' : 'info'} size={14} />
+          {message.text}
+        </p>
+      )}
     </div>
   );
 }

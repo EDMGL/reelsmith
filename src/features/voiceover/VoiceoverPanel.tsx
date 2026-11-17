@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { formatDuration, useEditorStore } from '../../core';
+import { formatDuration, Icon, useEditorStore } from '../../core';
 import { cancelVoiceover, refreshMics, startVoiceover, stopVoiceover, useVoiceoverStore } from './voiceoverStore';
 import './voiceover.css';
 
@@ -17,7 +17,7 @@ export default function VoiceoverPanel() {
 
   return (
     <div className="vo-panel">
-      <h3 className="vo-title">Voiceover</h3>
+      <h3 className="section-title vo-title">Voiceover</h3>
       <p className="vo-msg">Record your voice while the video plays. The recording starts at the playhead and lands on a “Voiceover” audio track.</p>
 
       <fieldset className="vo-group" disabled={busy}>
@@ -56,32 +56,44 @@ export default function VoiceoverPanel() {
           </div>
         )}
         {v.status === 'saving' && <div className="vo-live">Saving…</div>}
-        {v.status === 'idle' && <div className="vo-idle">Starts at {formatDuration(playhead)}</div>}
+        {v.status === 'idle' && (
+          <div className="vo-idle">
+            <Icon name="mic" size={20} />
+            <span>Starts at {formatDuration(playhead)}</span>
+          </div>
+        )}
         {(v.status === 'countdown' || v.status === 'recording') && (
-          <div className="vo-meter" aria-label="Microphone level">
-            <div style={{ width: `${Math.round(v.level * 100)}%` }} />
+          <div className="progress vo-meter" aria-label="Microphone level">
+            <span style={{ width: `${Math.round(v.level * 100)}%` }} />
           </div>
         )}
       </div>
 
       <div className="vo-actions">
         {v.status === 'idle' && (
-          <button type="button" className="btn btn-primary vo-rec" onClick={() => void startVoiceover()}>
-            ● Record
+          <button type="button" className="btn btn-primary btn-large vo-rec" onClick={() => void startVoiceover()}>
+            <Icon name="record-dot" />
+            Record
           </button>
         )}
         {v.status === 'recording' && (
-          <button type="button" className="btn btn-primary vo-rec" onClick={() => void stopVoiceover()}>
-            ■ Stop
+          <button type="button" className="btn btn-danger-solid btn-large vo-rec" onClick={() => void stopVoiceover()}>
+            <Icon name="stop" />
+            Stop
           </button>
         )}
         {(v.status === 'countdown' || v.status === 'recording') && (
-          <button type="button" className="btn" onClick={() => cancelVoiceover()}>
+          <button type="button" className="btn btn-large" onClick={() => cancelVoiceover()}>
             Cancel
           </button>
         )}
       </div>
-      {v.message && <p className={`vo-msg ${v.message.kind === 'error' ? 'vo-error' : 'vo-ok'}`}>{v.message.text}</p>}
+      {v.message && (
+        <p className={`status-msg vo-status${v.message.kind === 'error' ? ' error' : ''}`}>
+          <Icon name={v.message.kind === 'error' ? 'alert' : 'info'} size={14} />
+          {v.message.text}
+        </p>
+      )}
       <p className="vo-msg vo-tip">Tips: Space also stops the recording. Headphones avoid echo. Afterwards you can trim, move, change the volume or run “Audio cleanup” on the take like any clip.</p>
     </div>
   );

@@ -90,12 +90,16 @@ export class MediaPool {
     return this.slots.get(key);
   }
 
-  /** Any slot showing `assetId` (closest to `sourceTime` if several). */
-  findByAsset(assetId: string, sourceTime: number): MediaSlot | undefined {
+  /**
+   * Any slot showing `assetId` (closest to `sourceTime` if several). With
+   * `kind`, only slots of that element kind (an `<audio>` element playing a
+   * video file for a detached-audio clip has no picture).
+   */
+  findByAsset(assetId: string, sourceTime: number, kind?: MediaKind): MediaSlot | undefined {
     let best: MediaSlot | undefined;
     let bestD = Infinity;
     for (const s of this.slots.values()) {
-      if (s.assetId !== assetId) continue;
+      if (s.assetId !== assetId || (kind && s.kind !== kind)) continue;
       const d = Math.abs(s.el.currentTime - sourceTime);
       if (d < bestD) {
         best = s;

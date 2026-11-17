@@ -197,27 +197,140 @@ export function clipEnd(clip: Pick<Clip, 'start' | 'duration'>): number {
   return clip.start + clip.duration;
 }
 
-/** Tracks sorted by ascending `order` (= compositing order, bottom first). */
+// ---------------------------------------------------------------------------
+// Per-project query index
+// ---------------------------------------------------------------------------
+
+/**
+ * Read-only lookup structures derived from ONE immutable project object:
+ * tracks in compositing order, every track's clips sorted by start, and the
+ * running maximum clip end per track (for binary-searching active clips).
+ * Built lazily on first query and cached per project object (WeakMap), so
+ * per-frame queries cost O(tracks x log clips) instead of O(tracks x clips).
+ * Treat it as frozen: never mutate the arrays.
+ */
+export interface ProjectIndex {
+  readonly sortedTracks: readonly Track[];
+  readonly trackById: ReadonlyMap<Id, Track>;
+  /** Clips of each track sorted by start (stable: ties keep `project.clips` order). */
+  readonly clipsByTrack: ReadonlyMap<Id, readonly Clip[]>;
+  /** `maxEnd[trackId][i]` = max clip end among `clipsByTrack[trackId][0..i]`. */
+  readonly maxEndByTrack: ReadonlyMap<Id, Float64Array>;
+  /** End of the last clip (0 if empty). */
+  readonly duration: number;
+}
+
+const EMPTY_CLIPS: readonly Clip[] = Object.freeze([]);
+const projectIndexes = new WeakMap<Project, ProjectIndex>();
+
+function buildProjectIndex(project: Project): ProjectIndex {
+  const sortedTracks = [...project.tracks].sort((a, b) => a.order - b.order);
+  const trackById = new Map<Id, Track>();
+  for (const t of project.tracks) if (!trackById.has(t.id)) trackById.set(t.id, t);
+  const buckets = new Map<Id, Clip[]>();
+  let duration = 0;
+  for (const c of Object.values(project.clips)) {
+    let b = buckets.get(c.trackId);
+    if (!b) buckets.set(c.trackId, (b = []));
+    b.push(c);
+    duration = Math.max(duration, clipEnd(c));
+  }
+  const maxEndByTrack = new Map<Id, Float64Array>();
+  for (const [trackId, clips] of buckets) {
+    clips.sort((a, b) => a.start - b.start);
+    const maxEnd = new Float64Array(clips.length);
+    let m = -Infinity;
+    for (let i = 0; i < clips.length; i++) {
+      m = Math.max(m, clipEnd(clips[i]!));
+      maxEnd[i] = m;
+    }
+    maxEndByTrack.set(trackId, maxEnd);
+  }
+  return { sortedTracks, trackById, clipsByTrack: buckets, maxEndByTrack, duration };
+}
+
+/** The cached query index of a project object (built on first use). */
+export function getProjectIndex(project: Project): ProjectIndex {
+  let idx = projectIndexes.get(project);
+  if (!idx) {
+    idx = buildProjectIndex(project);
+    projectIndexes.set(project, idx);
+  }
+  return idx;
+}
+
+/** Index of the last clip with `start <= x` in a start-sorted array (-1 if none). */
+function lastStartingAtOrBefore(clips: readonly Clip[], x: number): number {
+  let lo = 0;
+  let hi = clips.length - 1;
+  let ans = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (clips[mid]!.start <= x) {
+      ans = mid;
+      lo = mid + 1;
+    } else hi = mid - 1;
+  }
+  return ans;
+}
+
+/**
+ * Clips of one track that cover `t` (`clipContainsTime`), sorted by start.
+ * O(log n + hits) via the project index.
+ */
+export function getTrackClipsAt(project: Project, trackId: Id, t: number): Clip[] {
+  const idx = getProjectIndex(project);
+  const clips = idx.clipsByTrack.get(trackId);
+  if (!clips || clips.length === 0) return [];
+  const maxEnd = idx.maxEndByTrack.get(trackId)!;
+  const out: Clip[] = [];
+  // Candidates start at or before t + eps; walk back while some earlier clip may still cover t.
+  for (let i = lastStartingAtOrBefore(clips, t + TIME_EPSILON); i >= 0; i--) {
+    if (!(t < maxEnd[i]! - TIME_EPSILON)) break;
+    const c = clips[i]!;
+    if (clipContainsTime(c, t)) out.push(c);
+  }
+  return out.reverse();
+}
+
+/**
+ * Clips of one track whose start lies in `(from, to]`, sorted by start.
+ * O(log n + hits) via the project index.
+ */
+export function getTrackClipsStartingIn(project: Project, trackId: Id, from: number, to: number): Clip[] {
+  const clips = getProjectIndex(project).clipsByTrack.get(trackId);
+  if (!clips || !(to > from)) return [];
+  const out: Clip[] = [];
+  for (let i = lastStartingAtOrBefore(clips, from) + 1; i < clips.length; i++) {
+    const c = clips[i]!;
+    if (c.start > to) break;
+    if (c.start > from) out.push(c);
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Queries
+// ---------------------------------------------------------------------------
+
+/** Tracks sorted by ascending `order` (= compositing order, bottom first). Returns a fresh array. */
 export function getSortedTracks(project: Project): Track[] {
-  return [...project.tracks].sort((a, b) => a.order - b.order);
+  return getProjectIndex(project).sortedTracks.slice();
 }
 
 export function getTrack(project: Project, trackId: Id): Track | undefined {
+  // Few tracks: a scan is cheaper than building the index for a short-lived intermediate project.
   return project.tracks.find((t) => t.id === trackId);
 }
 
-/** Clips of one track sorted by start time. */
+/** Clips of one track sorted by start time. Returns a fresh array. */
 export function getTrackClips(project: Project, trackId: Id): Clip[] {
-  return Object.values(project.clips)
-    .filter((c) => c.trackId === trackId)
-    .sort((a, b) => a.start - b.start);
+  return (getProjectIndex(project).clipsByTrack.get(trackId) ?? EMPTY_CLIPS).slice();
 }
 
-/** Total project length = end of the last clip (0 if empty). */
+/** Total project length = end of the last clip (0 if empty). Cached per project object. */
 export function getProjectDuration(project: Project): number {
-  let end = 0;
-  for (const c of Object.values(project.clips)) end = Math.max(end, clipEnd(c));
-  return end;
+  return getProjectIndex(project).duration;
 }
 
 /** True if the clip covers time `t` (start inclusive, end exclusive). */
@@ -226,16 +339,15 @@ export function clipContainsTime(clip: Pick<Clip, 'start' | 'duration'>, t: numb
 }
 
 /**
- * Clips active at time `t`, in compositing order (bottom track first).
- * Hidden tracks are skipped unless `includeHidden`.
+ * Clips active at time `t`, in compositing order (bottom track first; within a
+ * track by start). Hidden tracks are skipped unless `includeHidden`.
+ * O(tracks x log clips) through the cached project index.
  */
 export function getActiveClipsAt(project: Project, t: number, includeHidden = false): { clip: Clip; track: Track }[] {
   const out: { clip: Clip; track: Track }[] = [];
-  for (const track of getSortedTracks(project)) {
+  for (const track of getProjectIndex(project).sortedTracks) {
     if (track.hidden && !includeHidden) continue;
-    for (const clip of getTrackClips(project, track.id)) {
-      if (clipContainsTime(clip, t)) out.push({ clip, track });
-    }
+    for (const clip of getTrackClipsAt(project, track.id, t)) out.push({ clip, track });
   }
   return out;
 }

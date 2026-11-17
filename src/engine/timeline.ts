@@ -6,8 +6,8 @@ import {
   clipContainsTime,
   clipSourceTime,
   getActiveClipsAt,
-  getSortedTracks,
-  getTrackClips,
+  getProjectIndex,
+  getTrackClipsStartingIn,
   isMediaClip,
   type Clip,
   type MediaClip,
@@ -34,16 +34,21 @@ export function sourceTimeAt(clip: MediaClip, t: number): number {
  * hidden tracks and audio clips (which have no picture).
  */
 export function visibleClipsAt(project: Project, t: number): { clip: Clip; track: Track }[] {
-  return getActiveClipsAt(project, t).filter(({ clip }) => clip.type !== 'audio');
+  const out = getActiveClipsAt(project, t);
+  // Usually nothing to drop: filter in place instead of allocating a second array.
+  let n = 0;
+  for (const e of out) if (e.clip.type !== 'audio') out[n++] = e;
+  out.length = n;
+  return out;
 }
 
 /** Whether a clip's media is audible on its track (not muted, has volume, has audio). */
 export function isAudible(project: Project, clip: MediaClip, track: Track): boolean {
-  if (track.muted || clip.volume <= 0) return false;
-  if (clip.type === 'video') {
-    const asset = project.assets[clip.assetId];
-    if (asset && !asset.hasAudio) return false;
-  }
+  if (track.muted || !(clip.volume > 0)) return false;
+  // A video file without an audio track is silent, whether it is used by a
+  // video clip or by an audio clip referencing it (detached audio).
+  const asset = project.assets[clip.assetId];
+  if (asset && asset.kind === 'video' && !asset.hasAudio) return false;
   return true;
 }
 
@@ -80,9 +85,8 @@ export function mediaNeedsAt(project: Project, t: number): MediaNeed[] {
  */
 export function upcomingClips(project: Project, t: number, window: number): { clip: Clip; track: Track }[] {
   const out: { clip: Clip; track: Track }[] = [];
-  for (const track of getSortedTracks(project)) {
-    for (const clip of getTrackClips(project, track.id)) {
-      if (clip.start <= t || clip.start > t + window) continue;
+  for (const track of getProjectIndex(project).sortedTracks) {
+    for (const clip of getTrackClipsStartingIn(project, track.id, t, t + window)) {
       if (clip.type === 'video' || clip.type === 'image' || clip.type === 'audio') {
         if (track.hidden && !(isMediaClip(clip) && isAudible(project, clip, track))) continue;
         out.push({ clip, track });

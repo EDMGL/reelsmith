@@ -1,7 +1,25 @@
 /** Small shared UI pieces of the effects package. */
 import { useRef } from 'react';
-import { useEditorStore } from '../../core';
-import type { EffectParamDef } from './definitions';
+import { Icon, useEditorStore, type IconName } from '../../core';
+import type { EffectDefinition, EffectParamDef } from './definitions';
+
+/** Line icons for the built-in effects; others fall back to the definition's glyph. */
+const EFFECT_ICONS: Partial<Record<string, IconName>> = {
+  brightness: 'sun',
+  contrast: 'contrast',
+  saturation: 'droplet',
+  blur: 'blur',
+  temperature: 'thermometer',
+  vignette: 'vignette',
+  grain: 'grain',
+};
+
+/** Decorative icon of an effect definition (SVG when mapped, else its text glyph). */
+export function EffectIcon({ def, size = 14 }: { def: Pick<EffectDefinition, 'id' | 'icon'>; size?: number }) {
+  const name = EFFECT_ICONS[def.id];
+  if (name) return <Icon name={name} size={size} />;
+  return <>{def.icon ?? '•'}</>;
+}
 
 /**
  * Range slider whose whole pointer drag is ONE undo step: the transaction is

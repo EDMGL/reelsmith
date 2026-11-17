@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { ASPECT_PRESETS, useEditorStore } from '../core';
+import { ASPECT_PRESETS, Icon, useEditorStore } from '../core';
+import { IS_MAC } from './ShortcutsDialog';
 import { ToolbarActions } from './ToolbarActions';
 
 function ProjectName() {
@@ -60,12 +61,13 @@ export function AspectSelector() {
 
   return (
     <div className="aspect-selector" ref={ref}>
-      <button type="button" className="btn" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <button type="button" className="btn btn-ghost aspect-button" title="Canvas size" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
         <AspectIcon w={width} h={height} />
-        {aspectPreset === 'custom' ? 'Custom' : aspectPreset}
-        <span className="muted">
+        <span className="aspect-name">{aspectPreset === 'custom' ? 'Custom' : aspectPreset}</span>
+        <span className="muted aspect-size">
           {width}×{height}
         </span>
+        <Icon name="chevron-down" size={14} className="aspect-chevron" />
       </button>
       {open && (
         <div className="popover aspect-menu" role="menu">
@@ -112,7 +114,16 @@ export function AspectSelector() {
   );
 }
 
-export function TopBar() {
+const UNDO_KEY = IS_MAC ? '⌘Z' : 'Ctrl+Z';
+const REDO_KEY = IS_MAC ? '⇧⌘Z' : 'Ctrl+Shift+Z';
+
+interface TopBarProps {
+  onShowShortcuts?: () => void;
+  inspectorHidden?: boolean;
+  onToggleInspector?: () => void;
+}
+
+export function TopBar({ onShowShortcuts, inspectorHidden = false, onToggleInspector }: TopBarProps = {}) {
   const canUndo = useEditorStore((s) => s.past.length > 0);
   const canRedo = useEditorStore((s) => s.future.length > 0);
   const undoLabel = useEditorStore((s) => s.past[s.past.length - 1]?.label);
@@ -121,27 +132,65 @@ export function TopBar() {
   const redo = useEditorStore((s) => s.redo);
   return (
     <header className="topbar">
-      <div className="brand" aria-label="Erdemcut">
-        <span className="brand-mark" aria-hidden>
-          <svg viewBox="0 0 16 16" fill="none">
-            <path d="M5 3.2v9.6L12.6 8z" fill="#fff" />
-            <path d="M2.5 5.5h2M2.5 10.5h2" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" opacity="0.75" />
-          </svg>
-        </span>
-        <span className="brand-name">Erdemcut</span>
+      <div className="topbar-left">
+        <div className="brand" aria-label="Erdemcut">
+          <span className="brand-mark" aria-hidden>
+            <svg viewBox="0 0 16 16" fill="none">
+              <path d="M5 3.2v9.6L12.6 8z" fill="#fff" />
+              <path d="M2.5 5.5h2M2.5 10.5h2" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" opacity="0.75" />
+            </svg>
+          </span>
+          <span className="brand-name">Erdemcut</span>
+        </div>
+        <span className="topbar-divider" aria-hidden />
+        <ProjectName />
+        <div className="topbar-group" role="group" aria-label="History">
+          <button
+            type="button"
+            className="btn btn-ghost btn-icon-only"
+            disabled={!canUndo}
+            onClick={undo}
+            title={undoLabel ? `Undo ${undoLabel} (${UNDO_KEY})` : `Undo (${UNDO_KEY})`}
+            aria-label="Undo"
+          >
+            <Icon name="undo" size={18} />
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-icon-only"
+            disabled={!canRedo}
+            onClick={redo}
+            title={redoLabel ? `Redo ${redoLabel} (${REDO_KEY})` : `Redo (${REDO_KEY})`}
+            aria-label="Redo"
+          >
+            <Icon name="redo" size={18} />
+          </button>
+        </div>
       </div>
-      <ProjectName />
-      <div className="topbar-group">
-        <button type="button" className="btn btn-icon-only" disabled={!canUndo} onClick={undo} title={undoLabel ? `Undo ${undoLabel} (⌘Z)` : 'Undo (⌘Z)'} aria-label="Undo">
-          ↶
-        </button>
-        <button type="button" className="btn btn-icon-only" disabled={!canRedo} onClick={redo} title={redoLabel ? `Redo ${redoLabel} (⇧⌘Z)` : 'Redo (⇧⌘Z)'} aria-label="Redo">
-          ↷
-        </button>
+      <div className="topbar-center">
+        <AspectSelector />
       </div>
-      <AspectSelector />
-      <div className="topbar-spacer" />
-      <ToolbarActions location="topbar" />
+      <div className="topbar-right">
+        {onShowShortcuts && (
+          <button type="button" className="btn btn-ghost btn-icon-only" onClick={onShowShortcuts} title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">
+            <Icon name="keyboard" size={18} />
+          </button>
+        )}
+        {onToggleInspector && (
+          <button
+            type="button"
+            className={`btn btn-ghost btn-icon-only${inspectorHidden ? '' : ' is-on'}`}
+            onClick={onToggleInspector}
+            title={inspectorHidden ? 'Show inspector' : 'Hide inspector'}
+            aria-label={inspectorHidden ? 'Show inspector' : 'Hide inspector'}
+            aria-pressed={!inspectorHidden}
+          >
+            <Icon name="panel-right" size={18} />
+          </button>
+        )}
+        <span className="topbar-divider" aria-hidden />
+        <ToolbarActions location="topbar" />
+      </div>
     </header>
   );
 }

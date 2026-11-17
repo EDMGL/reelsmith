@@ -1,9 +1,18 @@
-import { inspectorTargets, type InspectorProps, type MotionPreset } from '../../core';
+import { Icon, inspectorTargets, type IconName, type InspectorProps, type MotionPreset } from '../../core';
 import { Slider } from '../text/controls';
 import { DEFAULT_FOCUS, MOTION_PRESETS, alternatePunchIn, motionFor, patchMotion, setMotionPreset } from './motion';
 import './motion.css';
 
 const FOCUS_GRID = [0.2, 0.5, 0.8];
+
+/** Line icons for the presets; unmapped presets keep their text glyph from motion.ts. */
+const PRESET_ICONS: Partial<Record<string, IconName>> = {
+  'zoom-in': 'zoom-in',
+  'zoom-out': 'zoom-out',
+  'punch-in': 'punch-in',
+  'pan-left': 'chevron-left',
+  'pan-right': 'chevron-right',
+};
 
 export default function MotionInspector(props: InspectorProps<'video' | 'image'>) {
   const { clip, track } = props;
@@ -27,9 +36,9 @@ export default function MotionInspector(props: InspectorProps<'video' | 'image'>
             onClick={() => setMotionPreset(targets, p.preset as MotionPreset)}
           >
             <span className="mo-icon" aria-hidden>
-              {p.icon}
+              {PRESET_ICONS[p.preset] ? <Icon name={PRESET_ICONS[p.preset]!} size={16} /> : p.icon}
             </span>
-            {p.label}
+            <span className="mo-label">{p.label}</span>
           </button>
         ))}
       </div>
@@ -73,10 +82,11 @@ export default function MotionInspector(props: InspectorProps<'video' | 'image'>
       )}
       {targets.length > 1 && (
         <button type="button" className="btn btn-small mo-alt" title="Every second clip (in time order) zooms in: wide, close, wide, close…" onClick={() => alternatePunchIn(targets, m.preset === 'punch-in' ? m.amount : 1.2)}>
-          ◎ Alternate punch-in (jump cuts)
+          <Icon name="punch-in" size={14} />
+          Alternate punch-in (jump cuts)
         </button>
       )}
-      <p className="muted small">Tip: after silence removal, select all pieces (⌘A) and use “Alternate punch-in” for a dynamic talking-head edit.</p>
+      <p className="muted small mo-tip">Tip: after silence removal, select all pieces (⌘A) and use “Alternate punch-in” for a dynamic talking-head edit.</p>
     </fieldset>
   );
 }

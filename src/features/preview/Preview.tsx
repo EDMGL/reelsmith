@@ -4,6 +4,7 @@ import {
   fitRect,
   formatTimecode,
   getProjectDuration,
+  Icon,
   snapToFrame,
   useEditorStore,
   useEngine,
@@ -168,10 +169,24 @@ export default function Preview() {
   );
 }
 
-function PreviewTools({ fullscreen, isPlaying, onFullscreen }: { fullscreen: boolean; isPlaying: boolean; onFullscreen: () => void }) {
+/** Play button + timecodes shown in full screen. Only this small component follows the playhead. */
+function FullscreenTransport({ isPlaying }: { isPlaying: boolean }) {
   const fps = useEditorStore((s) => s.project.fps);
   const t = useEditorStore((s) => s.currentTime);
   const duration = useEditorStore((s) => getProjectDuration(s.project));
+  return (
+    <>
+      <button type="button" className="btn btn-ghost btn-small btn-icon-only" aria-label={isPlaying ? 'Pause' : 'Play'} onClick={() => useEditorStore.getState().togglePlay()}>
+        <Icon name={isPlaying ? 'pause' : 'play'} />
+      </button>
+      <span className="timecode current rs-preview-tc">{formatTimecode(t, fps)}</span>
+      <span className="timecode muted rs-preview-tc">/ {formatTimecode(duration, fps)}</span>
+    </>
+  );
+}
+
+function PreviewTools({ fullscreen, isPlaying, onFullscreen }: { fullscreen: boolean; isPlaying: boolean; onFullscreen: () => void }) {
+  const fps = useEditorStore((s) => s.project.fps);
   const step = (dir: -1 | 1) => {
     const s = useEditorStore.getState();
     if (s.isPlaying) s.pause();
@@ -181,29 +196,21 @@ function PreviewTools({ fullscreen, isPlaying, onFullscreen }: { fullscreen: boo
   };
   return (
     <div className="rs-preview-tools">
-      {fullscreen && (
-        <>
-          <button type="button" className="btn btn-small btn-icon-only" aria-label={isPlaying ? 'Pause' : 'Play'} onClick={() => useEditorStore.getState().togglePlay()}>
-            {isPlaying ? '❚❚' : '▶'}
-          </button>
-          <span className="timecode current">{formatTimecode(t, fps)}</span>
-          <span className="timecode muted">/ {formatTimecode(duration, fps)}</span>
-        </>
-      )}
-      <button type="button" className="btn btn-small btn-icon-only" title="Previous frame (←)" aria-label="Previous frame" onClick={() => step(-1)}>
-        ◂❘
+      {fullscreen && <FullscreenTransport isPlaying={isPlaying} />}
+      <button type="button" className="btn btn-ghost btn-small btn-icon-only" title="Previous frame (←)" aria-label="Previous frame" onClick={() => step(-1)}>
+        <Icon name="frame-back" />
       </button>
-      <button type="button" className="btn btn-small btn-icon-only" title="Next frame (→)" aria-label="Next frame" onClick={() => step(1)}>
-        ❘▸
+      <button type="button" className="btn btn-ghost btn-small btn-icon-only" title="Next frame (→)" aria-label="Next frame" onClick={() => step(1)}>
+        <Icon name="frame-forward" />
       </button>
       <button
         type="button"
-        className="btn btn-small btn-icon-only"
+        className="btn btn-ghost btn-small btn-icon-only"
         title={fullscreen ? 'Exit full screen' : 'Full screen'}
         aria-label={fullscreen ? 'Exit full screen' : 'Full screen'}
         onClick={onFullscreen}
       >
-        {fullscreen ? '⤡' : '⤢'}
+        <Icon name={fullscreen ? 'exit-fullscreen' : 'fullscreen'} />
       </button>
     </div>
   );

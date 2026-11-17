@@ -163,24 +163,81 @@ export async function restoreProject(): Promise<boolean> {
   return ok;
 }
 
-/** Debounced autosave on every project change. Returns a stop function. */
-export function startAutosave(delayMs = 600): () => void {
+/** Default idle delay (ms) after the last project change before autosaving. */
+export const AUTOSAVE_DELAY_MS = 1000;
+
+export interface AutosaveOptions {
+  /** Idle time after the last change, ms. */
+  delayMs?: number;
+  /** Writes the project (default `saveProject`). */
+  save?: () => Promise<void> | void;
+  /** Runs `cb` when the main thread is idle (default requestIdleCallback, else immediately). */
+  whenIdle?: (cb: () => void) => void;
+}
+
+function defaultWhenIdle(cb: () => void): void {
+  const ric = (globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
+  if (typeof ric === 'function') ric(cb, { timeout: 2000 });
+  else cb();
+}
+
+/**
+ * Debounced autosave. Serializing a large project (hundreds of subtitle clips
+ * with word timings) is main-thread work, so it is kept off the hot paths:
+ * - it runs `delayMs` after the LAST project change (bursts coalesce to one save),
+ * - never while playing or while a transaction (drag, slider, typing burst) is
+ *   open: the save waits for the pause / commit,
+ * - inside an idle callback when the browser offers one.
+ * `beforeunload` still flushes synchronously. Returns a stop function.
+ */
+export function startAutosave(delayOrOpts: number | AutosaveOptions = {}): () => void {
+  const opts = typeof delayOrOpts === 'number' ? { delayMs: delayOrOpts } : delayOrOpts;
+  const delayMs = opts.delayMs ?? AUTOSAVE_DELAY_MS;
+  const save = opts.save ?? saveProject;
+  const whenIdle = opts.whenIdle ?? defaultWhenIdle;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const unsub = useEditorStore.subscribe((s, prev) => {
-    if (s.project === prev.project || !s.hydrated) return;
+  let dirty = false;
+  let stopped = false;
+  const busy = () => {
+    const s = useEditorStore.getState();
+    return s.isPlaying || !!s.transaction;
+  };
+  const run = () => {
+    timer = undefined;
+    if (stopped || !dirty) return;
+    if (busy()) return; // re-armed when playback stops / the transaction ends
+    whenIdle(() => {
+      if (stopped || !dirty || busy()) return;
+      dirty = false;
+      void save();
+    });
+  };
+  const arm = () => {
     clearTimeout(timer);
-    timer = setTimeout(() => void saveProject(), delayMs);
+    timer = setTimeout(run, delayMs);
+  };
+  const unsub = useEditorStore.subscribe((s, prev) => {
+    if (!s.hydrated) return;
+    if (s.project !== prev.project) {
+      dirty = true;
+      arm();
+    } else if (dirty && !busy() && (s.isPlaying !== prev.isPlaying || s.transaction !== prev.transaction) && timer === undefined) {
+      arm(); // became idle with unsaved changes
+    }
   });
   const flush = () => {
     clearTimeout(timer);
+    if (!dirty) return;
     try {
       localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(serializeProject(useEditorStore.getState().project)));
+      dirty = false;
     } catch {
       /* ignore */
     }
   };
   window.addEventListener('beforeunload', flush);
   return () => {
+    stopped = true;
     unsub();
     clearTimeout(timer);
     window.removeEventListener('beforeunload', flush);

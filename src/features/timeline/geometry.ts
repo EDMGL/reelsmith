@@ -2,7 +2,7 @@
 import { clipEnd, type Id, type Project, type Track, type TrackLayout } from '../../core';
 
 /** Display order of tracks: highest compositing order at the top. */
-export function displayTracks(project: Project): Track[] {
+export function displayTracks(project: Pick<Project, 'tracks'>): Track[] {
   return [...project.tracks].sort((a, b) => b.order - a.order);
 }
 

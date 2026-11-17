@@ -27,7 +27,7 @@ import {
 } from './model';
 import * as ops from './ops';
 import { clamp } from './time';
-import type { AspectPresetId, Clip, Id, MediaAsset, Project, SubtitleStyle, TimeRange, Track, TrackKind } from './types';
+import type { AspectPresetId, Clip, ClipboardContent, Id, MediaAsset, Project, SubtitleStyle, TimeRange, Track, TrackKind } from './types';
 
 export const HISTORY_LIMIT = 200;
 export const ZOOM_MIN = 2;
@@ -63,6 +63,11 @@ export interface EditorState {
   zoom: number;
   /** True once the autosaved project has been restored (or there was none). */
   hydrated: boolean;
+  /**
+   * Internal clip clipboard (Cut/Copy/Paste). Not undoable, not persisted, never
+   * mirrored to the system clipboard. Survives `loadProject` (paste into another project).
+   */
+  clipboard: ClipboardContent | null;
 
   // ---- project ----
   setProjectName(name: string): void;
@@ -105,6 +110,16 @@ export interface EditorState {
   /** Adds a fully-formed clip at its trackId/start. Returns false if rejected (overlap, locked, incompatible). */
   addClip(clip: Clip): boolean;
   /**
+   * Adds many fully-formed clips as ONE store update and ONE undo step
+   * (transaction-aware) — use it instead of looping `addClip` (e.g. subtitle cue
+   * import). Each clip is validated like `addClip`; rejected clips (missing /
+   * locked / incompatible track, duplicate id, zero duration, overlap with
+   * existing clips or with earlier clips of the same batch) are skipped and the
+   * others are still added. Returns the ids actually added (input order); [] and
+   * no history entry if none. Selection is not changed.
+   */
+  addClips(clips: readonly Clip[]): Id[];
+  /**
    * Inserts a clip choosing a track automatically (see `ops.placeClip`): uses
    * `opts.trackId` if given, else the first compatible free track, else
    * creates a new track. `start` defaults to the end of the chosen track.
@@ -125,6 +140,11 @@ export interface EditorState {
   moveClip(id: Id, start: number, trackId?: Id): boolean;
   /** Moves several clips by `delta` seconds, all-or-nothing. */
   moveClips(ids: Id[], delta: number): boolean;
+  /**
+   * Moves clips to explicit start/track targets (across tracks), all-or-nothing
+   * (see `ops.moveClipsTo`). One undo step. Returns false if rejected.
+   */
+  moveClipsTo(moves: readonly ops.ClipMove[]): boolean;
   /** Moves one edge to timeline `time`, clamped to source bounds and neighbours. */
   trimClip(id: Id, edge: ops.TrimEdge, time: number): boolean;
   /** Splits a clip at timeline `time`. Returns the id of the right part, or null. */
@@ -143,6 +163,34 @@ export interface EditorState {
   rippleDeleteClips(ids: Id[]): void;
   /** Duplicates clips after the selection span; selects and returns the copies. */
   duplicateClips(ids: Id[]): Id[];
+
+  // ---- clipboard (internal) ----
+  /** Copies clips (default: the selection) to the internal clipboard. Returns how many were copied. */
+  copyClips(ids?: readonly Id[]): number;
+  /**
+   * Cut = copy + delete as ONE undo step (default: the selection; clips on
+   * locked tracks are neither copied nor removed). `ripple: true` closes the
+   * gaps on their tracks (like `rippleDeleteClips`). Returns how many were cut.
+   */
+  cutClips(ids?: readonly Id[], opts?: { ripple?: boolean }): number;
+  /**
+   * Pastes the clipboard so its earliest clip starts at `opts.time` (default:
+   * the playhead), see `ops.pasteClips` (creates tracks when needed). `opts.trackId`
+   * prefers that track for the top-most group ("Paste here"). One undo step;
+   * the pasted clips (new ids) become the selection and are returned.
+   */
+  pasteClips(opts?: { time?: number; trackId?: Id }): Id[];
+
+  // ---- detach audio ----
+  /**
+   * "Detach audio" for the given video clips (default: the selection), see
+   * `ops.detachAudio`. One undo step. Returns the new audio clip ids.
+   */
+  detachAudio(ids?: readonly Id[]): Id[];
+  /** "Restore audio" (see `ops.restoreAudio`). One undo step. Returns true if anything changed. */
+  restoreAudio(ids?: readonly Id[]): boolean;
+  /** Adds the clips linked by "Detach audio" to the selection (default: of the selection). */
+  selectLinkedClips(ids?: readonly Id[]): void;
 
   // ---- selection ----
   selectClips(ids: Id[], mode?: SelectMode): void;
@@ -181,8 +229,31 @@ function pruneSelection(project: Project, ids: Id[]): Id[] {
   return next.length === ids.length ? ids : next;
 }
 
+/** Applies `fn` to every history snapshot; entries whose project is unchanged keep their identity. */
 function mapSnapshots(entries: HistoryEntry[], fn: (p: Project) => Project): HistoryEntry[] {
-  return entries.map((e) => ({ ...e, project: fn(e.project) }));
+  let changed = false;
+  const out = entries.map((e) => {
+    const project = fn(e.project);
+    if (project === e.project) return e;
+    changed = true;
+    return { ...e, project };
+  });
+  return changed ? out : entries;
+}
+
+/** Structural equality for plain JSON-like values (small objects such as styles). */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a);
+  const kb = Object.keys(b);
+  if (ka.length !== kb.length) return false;
+  return ka.every((k) => sameValue((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+}
+
+function sameIds(a: readonly Id[], b: readonly Id[]): boolean {
+  return a.length === b.length && a.every((id, i) => id === b[i]);
 }
 
 export const useEditorStore = create<EditorState>()((set, get) => {
@@ -231,6 +302,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     seekNonce: 0,
     zoom: ZOOM_DEFAULT,
     hydrated: false,
+    clipboard: null,
 
     // ---- project ----
     setProjectName: (name) => apply('Rename project', (p) => (p.name === name ? null : { ...p, name })),
@@ -259,9 +331,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
         const base = p.subtitleStyles[id];
         if (!base) return null;
         const next: SubtitleStyle = { ...base, ...patch, id: base.id };
-        const changed = (Object.keys(next) as (keyof SubtitleStyle)[]).some(
-          (k) => JSON.stringify(next[k]) !== JSON.stringify(base[k]),
-        );
+        const changed = !sameValue(next, base);
         return changed ? { ...p, subtitleStyles: { ...p.subtitleStyles, [id]: next } } : null;
       }),
     loadProject: (project) =>
@@ -283,7 +353,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
 
     // ---- assets ----
     addAsset: (asset) => {
-      const add = (p: Project): Project => ({ ...p, assets: { ...p.assets, [asset.id]: asset } });
+      const add = (p: Project): Project => (p.assets[asset.id] === asset ? p : { ...p, assets: { ...p.assets, [asset.id]: asset } });
       const s = get();
       set({
         project: add(s.project),
@@ -293,8 +363,18 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       });
     },
     updateAsset: (id, patch) => {
-      const upd = (p: Project): Project =>
-        p.assets[id] ? { ...p, assets: { ...p.assets, [id]: { ...p.assets[id]!, ...patch, id } } } : p;
+      // Snapshots usually share the same asset object: patch it once and reuse the result.
+      const cache = new Map<MediaAsset, MediaAsset>();
+      const upd = (p: Project): Project => {
+        const a = p.assets[id];
+        if (!a) return p;
+        let next = cache.get(a);
+        if (!next) {
+          next = { ...a, ...patch, id };
+          cache.set(a, next);
+        }
+        return { ...p, assets: { ...p.assets, [id]: next } };
+      };
       const s = get();
       if (!s.project.assets[id] && !s.past.some((e) => e.project.assets[id])) return;
       set({
@@ -330,6 +410,16 @@ export const useEditorStore = create<EditorState>()((set, get) => {
 
     // ---- clips ----
     addClip: (clip) => apply('Add clip', (p) => ops.addClip(p, clip)),
+    addClips: (clips) => {
+      let added: Id[] = [];
+      apply(clips.length > 1 ? 'Add clips' : 'Add clip', (p) => {
+        const r = ops.addClips(p, clips);
+        if (!r) return null;
+        added = r.added;
+        return r.project;
+      });
+      return added;
+    },
     insertClip: (clip, opts = {}) => {
       let id: Id | null = null;
       apply('Add clip', (p) => {
@@ -365,6 +455,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     },
     moveClip: (id, start, trackId) => apply('Move clip', (p) => ops.moveClip(p, id, start, trackId)),
     moveClips: (ids, delta) => apply('Move clips', (p) => ops.moveClips(p, ids, delta)),
+    moveClipsTo: (moves) => apply(moves.length > 1 ? 'Move clips' : 'Move clip', (p) => ops.moveClipsTo(p, moves)),
     trimClip: (id, edge, time) => apply('Trim clip', (p) => ops.trimClip(p, id, edge, time)),
     splitClip: (id, time) => {
       let newId: Id | null = null;
@@ -413,6 +504,61 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       return newIds;
     },
 
+    // ---- clipboard ----
+    copyClips: (ids) => {
+      const s = get();
+      const content = ops.copyClips(s.project, ids ?? s.selectedClipIds);
+      if (!content) return 0;
+      set({ clipboard: content });
+      return content.clips.length;
+    },
+    cutClips: (ids, opts = {}) => {
+      const s = get();
+      const editable = (ids ?? s.selectedClipIds).filter((id) => ops.isClipEditable(s.project, id));
+      const content = ops.copyClips(s.project, editable);
+      if (!content) return 0;
+      const ok = apply(opts.ripple ? 'Ripple cut' : 'Cut', (p) =>
+        opts.ripple ? ops.rippleDeleteClips(p, editable) : ops.removeClips(p, editable),
+      );
+      if (!ok) return 0;
+      set({ clipboard: content });
+      return content.clips.length;
+    },
+    pasteClips: (opts = {}) => {
+      const s = get();
+      if (!s.clipboard) return [];
+      const content = s.clipboard;
+      let newIds: Id[] = [];
+      apply('Paste', (p) => {
+        const r = ops.pasteClips(p, content, opts.time ?? s.currentTime, { trackId: opts.trackId });
+        if (!r) return null;
+        newIds = r.newIds;
+        return r.project;
+      });
+      if (newIds.length) set({ selectedClipIds: newIds });
+      return newIds;
+    },
+
+    // ---- detach audio ----
+    detachAudio: (ids) => {
+      const s = get();
+      let audioIds: Id[] = [];
+      apply('Detach audio', (p) => {
+        const r = ops.detachAudio(p, ids ?? s.selectedClipIds);
+        if (!r) return null;
+        audioIds = r.audioIds;
+        return r.project;
+      });
+      return audioIds;
+    },
+    restoreAudio: (ids) => apply('Restore audio', (p) => ops.restoreAudio(p, ids ?? get().selectedClipIds)),
+    selectLinkedClips: (ids) => {
+      const s = get();
+      const base = ids ?? s.selectedClipIds;
+      const linked = ops.linkedClipIds(s.project, base);
+      if (linked.length) s.selectClips([...base, ...linked], 'add');
+    },
+
     // ---- selection ----
     selectClips: (ids, mode = 'replace') => {
       const s = get();
@@ -425,14 +571,24 @@ export const useEditorStore = create<EditorState>()((set, get) => {
         valid.forEach((id) => (set0.has(id) ? set0.delete(id) : set0.add(id)));
         next = [...set0];
       }
+      // Same selection: keep the array identity (no re-render of selection subscribers).
+      if (sameIds(next, s.selectedClipIds)) return;
       set({ selectedClipIds: next });
     },
-    clearSelection: () => set({ selectedClipIds: [] }),
-    selectTrack: (id) => set({ selectedTrackId: id }),
+    clearSelection: () => {
+      if (get().selectedClipIds.length) set({ selectedClipIds: [] });
+    },
+    selectTrack: (id) => {
+      if (get().selectedTrackId !== id) set({ selectedTrackId: id });
+    },
 
     // ---- playback / view ----
     setCurrentTime: (t) => set((s) => ({ currentTime: Math.max(0, Number.isFinite(t) ? t : 0), seekNonce: s.seekNonce + 1 })),
-    setPlaybackTime: (t) => set({ currentTime: Math.max(0, t) }),
+    // Hot path (called by the engine every frame): only `currentTime` changes, nothing is derived.
+    setPlaybackTime: (t) => {
+      const currentTime = t > 0 ? t : 0;
+      if (currentTime !== get().currentTime) set({ currentTime });
+    },
     play: () => {
       const s = get();
       if (s.isPlaying) return;
@@ -442,7 +598,10 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     },
     pause: () => set({ isPlaying: false }),
     togglePlay: () => (get().isPlaying ? get().pause() : get().play()),
-    setZoom: (z) => set({ zoom: clamp(z, ZOOM_MIN, ZOOM_MAX) }),
+    setZoom: (z) => {
+      const zoom = clamp(Number.isFinite(z) ? z : ZOOM_DEFAULT, ZOOM_MIN, ZOOM_MAX);
+      if (zoom !== get().zoom) set({ zoom });
+    },
 
     // ---- history ----
     undo: () => {

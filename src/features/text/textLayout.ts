@@ -47,12 +47,33 @@ export function fontString(style: Pick<TextStyle, 'fontFamily' | 'fontSize' | 'f
   return `${style.italic ? 'italic ' : ''}${Math.round(style.fontWeight)} ${size}px ${style.fontFamily}`;
 }
 
-/** Measure function bound to a 2D context (sets `ctx.font` before measuring). */
+const contextMeasures = new WeakMap<object, MeasureFn>();
+/** Measure functions backed by a real browser canvas (all give identical results). */
+const canvasMeasures = new WeakSet<MeasureFn>();
+
+function isRealCanvasContext(ctx: object): boolean {
+  return (
+    (typeof CanvasRenderingContext2D !== 'undefined' && ctx instanceof CanvasRenderingContext2D) ||
+    (typeof OffscreenCanvasRenderingContext2D !== 'undefined' && ctx instanceof OffscreenCanvasRenderingContext2D)
+  );
+}
+
+/**
+ * Measure function bound to a 2D context (sets `ctx.font` before measuring).
+ * Returns the same function for the same context, so layout caches keyed by
+ * the measure function hit across frames.
+ */
 export function contextMeasure(ctx: Pick<Canvas2D, 'measureText' | 'font'>): MeasureFn {
-  return (text, font) => {
-    if (ctx.font !== font) ctx.font = font;
-    return ctx.measureText(text).width;
-  };
+  let fn = contextMeasures.get(ctx);
+  if (!fn) {
+    fn = (text, font) => {
+      if (ctx.font !== font) ctx.font = font;
+      return ctx.measureText(text).width;
+    };
+    contextMeasures.set(ctx, fn);
+    if (isRealCanvasContext(ctx)) canvasMeasures.add(fn);
+  }
+  return fn;
 }
 
 /** Rough measure for environments without canvas (jsdom): 0.55em per character. */
@@ -127,6 +148,93 @@ export function layoutText(text: string, style: TextStyle, maxWidth: number, mea
     boxWidth: Math.max(textWidth, minW) + padding * 2,
     boxHeight: textHeight + padding * 2,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Layout cache
+// ---------------------------------------------------------------------------
+
+/** Max cached layouts per measure namespace (LRU). */
+export const TEXT_LAYOUT_CACHE_SIZE = 512;
+
+/** Small LRU on top of Map insertion order. */
+export class LruCache<V> {
+  private readonly map = new Map<string, V>();
+  hits = 0;
+  misses = 0;
+  constructor(readonly max: number) {}
+  get(key: string): V | undefined {
+    const v = this.map.get(key);
+    if (v === undefined) {
+      this.misses++;
+      return undefined;
+    }
+    this.hits++;
+    this.map.delete(key);
+    this.map.set(key, v);
+    return v;
+  }
+  set(key: string, value: V): void {
+    this.map.delete(key);
+    this.map.set(key, value);
+    while (this.map.size > this.max) this.map.delete(this.map.keys().next().value!);
+  }
+  get size(): number {
+    return this.map.size;
+  }
+  clear(): void {
+    this.map.clear();
+    this.hits = 0;
+    this.misses = 0;
+  }
+}
+
+/** Shared by every real-canvas measure function (same font engine = same widths). */
+const canvasLayoutCache = new LruCache<TextLayout>(TEXT_LAYOUT_CACHE_SIZE);
+/** Other measure functions (approximate, test fakes) each get their own cache. */
+let fnLayoutCaches = new WeakMap<MeasureFn, LruCache<TextLayout>>();
+let fontListenerInstalled = false;
+
+function layoutCacheFor(measure: MeasureFn): LruCache<TextLayout> {
+  if (!fontListenerInstalled) {
+    fontListenerInstalled = true;
+    // A web font that finishes loading changes measurements: start over.
+    const fonts = typeof document !== 'undefined' ? document.fonts : undefined;
+    fonts?.addEventListener?.('loadingdone', () => clearTextLayoutCache());
+  }
+  if (canvasMeasures.has(measure)) return canvasLayoutCache;
+  let c = fnLayoutCaches.get(measure);
+  if (!c) fnLayoutCaches.set(measure, (c = new LruCache<TextLayout>(TEXT_LAYOUT_CACHE_SIZE)));
+  return c;
+}
+
+/** Drops every cached layout (e.g. after fonts changed). */
+export function clearTextLayoutCache(): void {
+  canvasLayoutCache.clear();
+  fnLayoutCaches = new WeakMap();
+}
+
+/** Cache statistics for `measure`'s namespace (tests / diagnostics). */
+export function textLayoutCacheStats(measure: MeasureFn): { size: number; hits: number; misses: number; max: number } {
+  const c = layoutCacheFor(measure);
+  return { size: c.size, hits: c.hits, misses: c.misses, max: c.max };
+}
+
+/**
+ * `layoutText` with a bounded LRU cache keyed by everything the layout depends
+ * on (font, line height, background padding, wrap width, text). Returns a
+ * SHARED object: treat it as read-only. Renderers call this every frame.
+ */
+export function layoutTextCached(text: string, style: TextStyle, maxWidth: number, measure: MeasureFn): TextLayout {
+  const cache = layoutCacheFor(measure);
+  const padding = style.background ? Math.max(0, style.background.padding) : 0;
+  const key = `${fontString(style)}\u0000${style.lineHeight}\u0000${padding}\u0000${maxWidth}\u0000${text}`;
+  let layout = cache.get(key);
+  if (!layout) {
+    layout = layoutText(text, style, maxWidth, measure);
+    cache.set(key, layout);
+  }
+  return layout;
 }
 
 /** x of a line's anchor (used with the matching `textAlign`) inside a centered block. */

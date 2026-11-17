@@ -1,10 +1,16 @@
+/* Media library panel (tokens only; see app/theme.css). */
 .media-panel {
   display: flex;
   flex-direction: column;
+  gap: var(--space-3);
   height: 100%;
   min-height: 0;
+  padding: var(--space-4);
   border: 1px dashed transparent;
   border-radius: var(--radius);
+  transition:
+    border-color var(--dur-fast),
+    background-color var(--dur-fast);
 }
 .media-panel.drag-over {
   border-color: var(--accent);
@@ -12,162 +18,209 @@
 }
 .media-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 10px;
+  gap: var(--space-3);
+  flex: none;
 }
 .media-status {
-  margin: 0 10px 6px;
-}
-.media-status.error {
-  color: var(--danger);
-}
-.media-empty {
-  margin: 10px;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
+  flex: none;
+  margin: 0;
   align-items: center;
-  justify-content: center;
+  overflow-wrap: anywhere;
+}
+.media-status .icon {
+  margin-top: 1px;
+}
+
+/* Empty library: shared .empty-state inside a dashed drop zone */
+.media-empty {
+  flex: 1;
+  min-height: 160px;
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius-lg);
-  color: var(--text-dim);
   cursor: pointer;
-  text-align: center;
-  padding: 24px;
+  transition:
+    border-color var(--dur-fast),
+    background-color var(--dur-fast),
+    color var(--dur-fast);
 }
 .media-empty:hover {
-  border-color: var(--accent);
-  color: var(--text);
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
 }
-.media-empty p {
-  margin: 4px 0;
+.media-empty:hover .empty-state-icon {
+  border-color: var(--accent-border);
+  color: var(--accent);
 }
-.media-empty-icon {
-  font-size: 28px;
-  margin-bottom: 8px;
+.empty-state.media-empty p {
+  margin: 0;
 }
-.asset-list {
+
+/* Asset list (the <ul>; list-view cards also carry .asset-list, hence the element selector) */
+ul.asset-list {
   list-style: none;
   margin: 0;
-  padding: 0 10px 10px;
-  overflow: auto;
+  padding: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
   flex: 1;
   min-height: 0;
 }
 .asset-list-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  gap: var(--space-3);
   align-content: start;
 }
 .asset-list-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
+
+/* Card */
 .asset-card {
   position: relative;
+  min-width: 0;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   cursor: grab;
   overflow: hidden;
+  transition:
+    background-color var(--dur-fast),
+    border-color var(--dur-fast);
 }
 .asset-card:hover {
-  border-color: var(--border-strong);
+  background: var(--surface-3);
+  border-color: var(--border-hover);
+}
+.asset-card:active {
+  cursor: grabbing;
 }
 .asset-card.asset-missing {
   opacity: 0.6;
   cursor: default;
 }
-.asset-grid .asset-thumb {
-  aspect-ratio: 16 / 10;
+.asset-card.asset-missing .asset-sub {
+  color: var(--warning);
 }
-.asset-list .asset-card.asset-list,
-.asset-card.asset-list {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px;
-}
-.asset-card.asset-list .asset-thumb {
-  width: 56px;
-  height: 36px;
-  flex: none;
-  border-radius: 4px;
-}
+
+/* Thumbnail */
 .asset-thumb {
   position: relative;
-  background: #000;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  background: #000;
   color: var(--audio);
+}
+.asset-grid .asset-thumb {
+  aspect-ratio: 16 / 10;
+  border-bottom: 1px solid var(--border-subtle);
 }
 .asset-thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
-.asset-thumb svg {
+.asset-thumb svg:not(.icon) {
   width: 100%;
   height: 70%;
 }
 .asset-kind-icon {
-  font-size: 22px;
+  display: grid;
+  place-items: center;
   color: var(--text-dim);
 }
 .asset-badge {
   position: absolute;
-  right: 4px;
-  bottom: 4px;
-  font-size: 10px;
-  padding: 1px 4px;
-  border-radius: 3px;
+  right: var(--space-1);
+  bottom: var(--space-1);
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-xs);
   background: rgba(0, 0, 0, 0.7);
   color: #fff;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-medium);
   font-variant-numeric: tabular-nums;
+  line-height: 1.4;
 }
 .asset-used {
   position: absolute;
-  left: 5px;
-  top: 5px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
+  left: var(--space-2);
+  top: var(--space-2);
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
   background: var(--accent);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.5);
 }
+
+/* Name + details */
 .asset-meta {
   display: flex;
   flex-direction: column;
-  padding: 5px 7px 6px;
+  gap: var(--space-0);
   min-width: 0;
   flex: 1;
-}
-.asset-card.asset-list .asset-meta {
-  padding: 0;
+  padding: var(--space-2) var(--space-3);
 }
 .asset-name {
-  font-size: 12px;
-  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
 }
+.asset-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Actions */
 .asset-actions {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
+  flex: none;
 }
 .asset-grid .asset-actions {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: var(--space-1);
+  right: var(--space-1);
   opacity: 0;
-  transition: opacity 0.12s;
+  transition: opacity var(--dur-fast);
 }
 .asset-card:hover .asset-actions,
 .asset-card:focus-within .asset-actions {
   opacity: 1;
+}
+
+/* List view row */
+.asset-card.asset-list {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-1);
+  border-radius: var(--radius);
+}
+.asset-card.asset-list .asset-thumb {
+  width: 56px;
+  height: 36px;
+  flex: none;
+  border-radius: var(--radius-xs);
+}
+.asset-card.asset-list .asset-meta {
+  padding: 0;
+}
+.asset-card.asset-list .asset-actions {
+  padding-right: var(--space-1);
 }

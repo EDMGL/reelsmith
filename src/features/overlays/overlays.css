@@ -1,3 +1,8 @@
+/*
+ * Transform overlay drawn over the preview canvas + placement inspector.
+ * Tokens only (see app/theme.css). No filters/blur/animation here: the
+ * overlay sits on the canvas and must stay cheap to repaint during playback.
+ */
 .p3-xf-root {
   position: absolute;
   inset: 0;
@@ -7,13 +12,13 @@
 .p3-xf-box {
   position: absolute;
   box-sizing: border-box;
-  border: 1.5px solid var(--accent, #2fd6b5);
+  border: 1.5px solid var(--accent);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
   pointer-events: none;
 }
 .p3-xf-box.locked {
   border-style: dashed;
-  border-color: var(--text-dim, #8f95a3);
+  border-color: var(--text-dim);
 }
 .p3-xf-handle,
 .p3-xf-rotate {
@@ -22,10 +27,15 @@
   height: 12px;
   margin: -6px 0 0 -6px;
   background: #fff;
-  border: 1.5px solid var(--accent, #2fd6b5);
-  border-radius: 2px;
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius-xs);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   pointer-events: auto;
   touch-action: none;
+}
+.p3-xf-handle:hover,
+.p3-xf-rotate:hover {
+  background: var(--accent);
 }
 .p3-xf-nw {
   left: 0;
@@ -54,13 +64,13 @@
   width: 1.5px;
   height: 24px;
   margin-left: -0.75px;
-  background: var(--accent, #2fd6b5);
+  background: var(--accent);
   pointer-events: none;
 }
 .p3-xf-rotate {
   left: 50%;
   top: -28px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   cursor: grab;
 }
 .p3-xf-box.dragging .p3-xf-rotate {
@@ -68,13 +78,19 @@
 }
 .p3-xf-lock {
   position: absolute;
-  right: 2px;
-  top: 2px;
-  font-size: 12px;
+  right: var(--space-1);
+  top: var(--space-1);
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-xs);
+  background: rgba(0, 0, 0, 0.6);
+  color: var(--text);
 }
 .p3-xf-guide {
   position: absolute;
-  background: #ff4fa3;
+  background: var(--subtitle);
   pointer-events: none;
 }
 .p3-xf-guide-v {
@@ -86,4 +102,20 @@
   left: 0;
   right: 0;
   height: 1px;
+}
+
+/* Placement inspector */
+.ov-segmented {
+  display: flex;
+  flex-wrap: wrap;
+  width: 100%;
+}
+.ov-segmented button {
+  flex: 1 1 auto;
+  min-height: var(--control-h-sm);
+  white-space: nowrap;
+}
+.ov-source {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
 }

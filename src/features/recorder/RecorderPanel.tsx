@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { Icon, type IconName } from '../../core';
 import { cancelRecording, closePreview, openPreview, setSources, startRecording, stopRecording, useRecorderStore } from './recorderStore';
 import type { BubbleCorner, BubbleShape, BubbleSize } from './layout';
 import './recorder.css';
@@ -16,11 +17,11 @@ function LiveVideo({ stream, mirror, className, label }: { stream: MediaStream |
 
 const fmt = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 
-const CORNERS: readonly { id: BubbleCorner; label: string }[] = [
-  { id: 'top-left', label: '↖' },
-  { id: 'top-right', label: '↗' },
-  { id: 'bottom-left', label: '↙' },
-  { id: 'bottom-right', label: '↘' },
+const CORNERS: readonly { id: BubbleCorner; icon: IconName }[] = [
+  { id: 'top-left', icon: 'corner-tl' },
+  { id: 'top-right', icon: 'corner-tr' },
+  { id: 'bottom-left', icon: 'corner-bl' },
+  { id: 'bottom-right', icon: 'corner-br' },
 ];
 
 export default function RecorderPanel() {
@@ -33,7 +34,7 @@ export default function RecorderPanel() {
   }, [r.sources.camera]);
   useEffect(() => () => closePreview(), []);
 
-  const source = (key: 'screen' | 'camera' | 'mic', icon: string, label: string, hint: string) => (
+  const source = (key: 'screen' | 'camera' | 'mic', icon: IconName, label: string, hint: string) => (
     <button
       type="button"
       className={`rc-source${r.sources[key] ? ' on' : ''}`}
@@ -43,7 +44,7 @@ export default function RecorderPanel() {
       onClick={() => setSources({ [key]: !r.sources[key] })}
     >
       <span className="rc-source-icon" aria-hidden>
-        {icon}
+        <Icon name={icon} size={20} />
       </span>
       <span>{label}</span>
     </button>
@@ -52,14 +53,14 @@ export default function RecorderPanel() {
   return (
     <div className="rc-panel">
       <div className="rc-head">
-        <h3 className="rc-title">Record</h3>
+        <h3 className="section-title rc-title">Record</h3>
         <p className="rc-msg">Screen, camera and mic together. They land on the timeline as separate clips you can edit.</p>
       </div>
 
       <div className="rc-sources" role="group" aria-label="Sources">
-        {source('screen', '🖥', 'Screen', 'Record a screen, window or tab (the browser asks which)')}
-        {source('camera', '📷', 'Camera', 'Your webcam, shown as a bubble over the screen')}
-        {source('mic', '🎙', 'Mic', 'Your voice')}
+        {source('screen', 'monitor', 'Screen', 'Record a screen, window or tab (the browser asks which)')}
+        {source('camera', 'camera', 'Camera', 'Your webcam, shown as a bubble over the screen')}
+        {source('mic', 'mic', 'Mic', 'Your voice')}
       </div>
 
       <div className={`rc-stage${live ? ' live' : ''}`}>
@@ -86,7 +87,8 @@ export default function RecorderPanel() {
             <div className="segmented" role="group" aria-label="Bubble shape">
               {(['circle', 'rounded'] as BubbleShape[]).map((s) => (
                 <button key={s} type="button" className={r.shape === s ? 'active' : ''} aria-pressed={r.shape === s} onClick={() => useRecorderStore.setState({ shape: s })}>
-                  {s === 'circle' ? '◯ Circle' : '▢ Rounded'}
+                  <Icon name={s === 'circle' ? 'shape-circle' : 'shape-rounded'} size={14} />
+                  {s === 'circle' ? 'Circle' : 'Rounded'}
                 </button>
               ))}
             </div>
@@ -106,7 +108,7 @@ export default function RecorderPanel() {
             <div className="rc-corners" role="group" aria-label="Bubble corner">
               {CORNERS.map((c) => (
                 <button key={c.id} type="button" className={r.corner === c.id ? 'active' : ''} aria-pressed={r.corner === c.id} aria-label={c.id} onClick={() => useRecorderStore.setState({ corner: c.id })}>
-                  {c.label}
+                  <Icon name={c.icon} size={14} />
                 </button>
               ))}
             </div>
@@ -121,22 +123,29 @@ export default function RecorderPanel() {
 
       <div className="rc-actions">
         {r.status === 'idle' && (
-          <button type="button" className="btn btn-primary rc-go" onClick={() => void startRecording()} disabled={!r.sources.screen && !r.sources.camera}>
-            ● Start recording
+          <button type="button" className="btn btn-primary btn-large rc-go" onClick={() => void startRecording()} disabled={!r.sources.screen && !r.sources.camera}>
+            <Icon name="record-dot" />
+            Start recording
           </button>
         )}
         {r.status === 'recording' && (
-          <button type="button" className="btn btn-primary rc-go rc-stop" onClick={() => void stopRecording()}>
-            ■ Stop
+          <button type="button" className="btn btn-danger-solid btn-large rc-go rc-stop" onClick={() => void stopRecording()}>
+            <Icon name="stop" />
+            Stop
           </button>
         )}
         {(r.status === 'recording' || r.status === 'countdown' || r.status === 'starting') && (
-          <button type="button" className="btn" onClick={() => cancelRecording()}>
+          <button type="button" className="btn btn-large" onClick={() => cancelRecording()}>
             Cancel
           </button>
         )}
       </div>
-      {r.message && <p className={`rc-msg ${r.message.kind === 'error' ? 'rc-error' : 'rc-ok'}`}>{r.message.text}</p>}
+      {r.message && (
+        <p className={`status-msg rc-status${r.message.kind === 'error' ? ' error' : ''}`}>
+          <Icon name={r.message.kind === 'error' ? 'alert' : 'info'} size={14} />
+          {r.message.text}
+        </p>
+      )}
       <p className="rc-msg rc-tip">Tip: to include sound from a video or tab, tick “Share audio” in the browser’s picker. The browser’s “Stop sharing” button also ends the recording.</p>
     </div>
   );

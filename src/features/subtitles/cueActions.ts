@@ -88,13 +88,15 @@ export function importCues(cues: readonly Cue[], opts: { trackId?: Id | null; re
     const r = resolveOverlaps(cues, occupied, minDur(project));
     report.trimmed = r.trimmed;
     report.skipped = r.skipped;
-    for (const cue of r.placed) {
-      const ms = (x: number) => Math.round(x * 1000) / 1000;
+    const ms = (x: number) => Math.round(x * 1000) / 1000;
+    const clips = r.placed.map((cue) => {
       const words = cue.words?.map((w) => ({ text: w.text, start: ms(w.start - cue.start), end: ms(w.end - cue.start) }));
-      const clip = createSubtitleClip({ trackId: trackId!, start: cue.start, duration: cue.end - cue.start, text: cue.text, name: cueName(cue.text), words });
-      if (S().addClip(clip)) report.added++;
-      else report.skipped++;
-    }
+      return createSubtitleClip({ trackId: trackId!, start: cue.start, duration: cue.end - cue.start, text: cue.text, name: cueName(cue.text), words });
+    });
+    // ONE store update for the whole batch (not one per cue): subscribers run once.
+    const added = clips.length ? S().addClips(clips) : [];
+    report.added = added.length;
+    report.skipped += clips.length - added.length;
   });
   return report;
 }

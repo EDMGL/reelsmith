@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import {
   DEFAULT_SUBTITLE_STYLE_ID,
   defaultSubtitleStyle,
   getEngine,
   getProjectDuration,
+  getTrackClipsAt,
+  Icon,
   useEditorStore,
+  type Project,
   type Id,
   type SubtitleClip,
   type SubtitleStyle,
@@ -114,17 +117,25 @@ function CueText({ clip }: { clip: SubtitleClip }) {
   );
 }
 
-function CueRow({ clip, index, current, selected, locked, onStatus }: { clip: SubtitleClip; index: number; current: boolean; selected: boolean; locked: boolean; onStatus: (s: Status) => void }) {
-  const ref = useRef<HTMLLIElement>(null);
-  const isPlaying = useEditorStore((s) => s.isPlaying);
-  useEffect(() => {
-    if (current && isPlaying) ref.current?.scrollIntoView?.({ block: 'nearest' });
-  }, [current, isPlaying]);
+interface CueRowProps {
+  clip: SubtitleClip;
+  index: number;
+  current: boolean;
+  selected: boolean;
+  locked: boolean;
+  onStatus: (s: Status) => void;
+}
+
+/**
+ * One cue. Memoized: it re-renders only when its own clip object (immutable),
+ * index, current/selected/locked flags change, never on playback ticks.
+ */
+const CueRow = memo(function CueRow({ clip, index, current, selected, locked, onStatus }: CueRowProps) {
   const end = clip.start + clip.duration;
   const reject = (what: string) => onStatus({ kind: 'error', text: `${what}: would overlap a neighbouring cue or is invalid.` });
   return (
     <li
-      ref={ref}
+      data-cue-id={clip.id}
       className={`p3-cue${current ? ' current' : ''}${selected ? ' selected' : ''}`}
       data-testid="cue-row"
       aria-current={current ? 'true' : undefined}
@@ -151,7 +162,7 @@ function CueRow({ clip, index, current, selected, locked, onStatus }: { clip: Su
                 if (!splitCueAt(clip.id, S().currentTime)) onStatus({ kind: 'error', text: 'Cue too short to split.' });
               }}
             >
-              ✂
+              <Icon name="scissors" size={14} />
             </button>
             <button
               type="button"
@@ -163,7 +174,7 @@ function CueRow({ clip, index, current, selected, locked, onStatus }: { clip: Su
                 if (!mergeWithNext(clip.id)) onStatus({ kind: 'error', text: 'No next cue to merge with.' });
               }}
             >
-              ⤓
+              <Icon name="arrow-down" size={14} />
             </button>
             <button
               type="button"
@@ -175,7 +186,7 @@ function CueRow({ clip, index, current, selected, locked, onStatus }: { clip: Su
                 S().removeClips([clip.id]);
               }}
             >
-              ×
+              <Icon name="close" size={14} />
             </button>
           </span>
         </div>
@@ -183,7 +194,7 @@ function CueRow({ clip, index, current, selected, locked, onStatus }: { clip: Su
       </fieldset>
     </li>
   );
-}
+});
 
 function Section({ title, children, defaultOpen = false }: { title: string; children: ReactNode; defaultOpen?: boolean }) {
   return (
@@ -250,7 +261,7 @@ export function HighlightEditor({ style }: { style: SubtitleStyle }) {
   );
 }
 
-function StyleEditor() {
+const StyleEditor = memo(function StyleEditor() {
   const style = useEditorStore((s) => s.project.subtitleStyles[DEFAULT_SUBTITLE_STYLE_ID]) ?? defaultSubtitleStyle();
   return (
     <div className="inspector-fields p3-inspector">
@@ -279,7 +290,7 @@ function StyleEditor() {
       </button>
     </div>
   );
-}
+});
 
 /** Whisper language hints ('' = auto-detect). */
 const CAPTION_LANGUAGES: readonly [code: string, label: string][] = [
@@ -315,7 +326,7 @@ function writePrefs(prefs: { provider?: string; language?: string }): void {
   }
 }
 
-function AutoCaptions({ trackId, onStatus }: { trackId: Id | null; onStatus: (s: Status) => void }) {
+const AutoCaptions = memo(function AutoCaptions({ trackId, onStatus }: { trackId: Id | null; onStatus: (s: Status) => void }) {
   const providers = useTranscriptionProviders();
   const [progress, setProgress] = useState<number | null>(null);
   const [phase, setPhase] = useState('');
@@ -396,18 +407,221 @@ function AutoCaptions({ trackId, onStatus }: { trackId: Id | null; onStatus: (s:
       </span>
     </>
   );
+});
+
+/** Returns the previous array object while `next` has the same items (shallow). */
+function useStableArray<T>(next: T[]): T[] {
+  const ref = useRef(next);
+  const prev = ref.current;
+  if (prev !== next && (prev.length !== next.length || prev.some((x, i) => x !== next[i]))) ref.current = next;
+  return ref.current;
 }
+
+/** Id of the subtitle cue on `trackId` under `t` (null if none). O(log n): safe in a per-tick selector. */
+export function currentCueId(project: Project, trackId: Id | null, t: number): Id | null {
+  if (!trackId) return null;
+  for (const c of getTrackClipsAt(project, trackId, t)) if (c.type === 'subtitle') return c.id;
+  return null;
+}
+
+/** Lists with at least this many cues render only the rows near the viewport. */
+export const CUE_WINDOW_MIN = 60;
+const OVERSCAN_PX = 600;
+const DEFAULT_ROW_PX = 76;
+/** A focused row stays mounted while it is at most this many rows outside the window. */
+const KEEP_FOCUSED_ROWS = 200;
+
+interface CueListProps {
+  cues: SubtitleClip[];
+  trackId: Id | null;
+  locked: boolean;
+  selectedIds: Id[];
+  onStatus: (s: Status) => void;
+  /** The scrolling element containing the list (the panel root). */
+  scrollerRef: RefObject<HTMLElement | null>;
+}
+
+/**
+ * The cue list. Playback only changes the derived current-cue id (re-rendering
+ * at most the two affected rows), and long lists are windowed: only rows near
+ * the viewport of the scrolling panel are mounted, with measured row heights
+ * (estimated until measured) padding the rest. Without layout (jsdom, hidden
+ * panel) every row is rendered.
+ */
+const CueList = memo(function CueList({ cues, trackId, locked, selectedIds, onStatus, scrollerRef }: CueListProps) {
+  const currentId = useEditorStore((s) => currentCueId(s.project, trackId, s.currentTime));
+  const isPlaying = useEditorStore((s) => s.isPlaying);
+  const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const listRef = useRef<HTMLUListElement>(null);
+  const heights = useRef(new Map<Id, number>());
+  const [win, setWin] = useState<{ first: number; last: number } | null>(null);
+  const [focusedId, setFocusedId] = useState<Id | null>(null);
+  const n = cues.length;
+  // The parent's ref is not attached yet while our layout effects run on mount: fall back to the list's parent.
+  const scroller = useCallback((): HTMLElement | null => scrollerRef.current ?? listRef.current?.parentElement ?? null, [scrollerRef]);
+
+  const offsetsOf = useCallback((): Float64Array => {
+    const h = heights.current;
+    let sum = 0;
+    let cnt = 0;
+    for (const v of h.values()) {
+      sum += v;
+      cnt++;
+    }
+    const est = cnt ? sum / cnt : DEFAULT_ROW_PX;
+    const off = new Float64Array(cues.length + 1);
+    for (let i = 0; i < cues.length; i++) off[i + 1] = off[i]! + (h.get(cues[i]!.id) ?? est);
+    return off;
+  }, [cues]);
+
+  const canWindow = () => {
+    const sc = scroller();
+    return !!sc && sc.clientHeight > 0 && n >= CUE_WINDOW_MIN;
+  };
+
+  const update = useCallback(() => {
+    const sc = scroller();
+    const list = listRef.current;
+    if (!sc || !list || sc.clientHeight <= 0 || cues.length < CUE_WINDOW_MIN) {
+      setWin((w) => (w === null ? w : null));
+      return;
+    }
+    const listTop = list.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop;
+    const top = sc.scrollTop - listTop - OVERSCAN_PX;
+    const bottom = sc.scrollTop + sc.clientHeight - listTop + OVERSCAN_PX;
+    const off = offsetsOf();
+    let first = 0;
+    while (first < cues.length - 1 && off[first + 1]! < top) first++;
+    let last = first;
+    while (last < cues.length - 1 && off[last + 1]! < bottom) last++;
+    setWin((w) => (w && w.first === first && w.last === last ? w : { first, last }));
+  }, [cues, offsetsOf, scroller]);
+
+  // Re-window on scroll / resize (one update per animation frame).
+  useEffect(() => {
+    const sc = scroller();
+    if (!sc) return;
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        update();
+      });
+    };
+    sc.addEventListener('scroll', onScroll, { passive: true });
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(onScroll) : null;
+    ro?.observe(sc);
+    return () => {
+      sc.removeEventListener('scroll', onScroll);
+      ro?.disconnect();
+      cancelAnimationFrame(raf);
+    };
+  }, [scroller, update]);
+
+  // Measure mounted rows; re-window when the list or a measured height changes.
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    let changed = false;
+    if (list) {
+      let gap: number | null = null;
+      for (const el of Array.from(list.children) as HTMLElement[]) {
+        const id = el.dataset.cueId;
+        if (!id) continue;
+        const hh = el.offsetHeight;
+        if (!(hh > 0)) continue;
+        gap ??= parseFloat(getComputedStyle(el).marginBottom) || 0;
+        const v = hh + gap;
+        if (Math.abs((heights.current.get(id) ?? -1) - v) > 0.5) {
+          heights.current.set(id, v);
+          changed = true;
+        }
+      }
+    }
+    if (heights.current.size > cues.length * 2 + 64) {
+      const live = new Set(cues.map((c) => c.id));
+      for (const id of [...heights.current.keys()]) if (!live.has(id)) heights.current.delete(id);
+    }
+    if (changed || win === null) update();
+  });
+
+  // Keep the current cue in view while playing.
+  useEffect(() => {
+    if (!isPlaying || !currentId) return;
+    const list = listRef.current;
+    const el = list ? (Array.from(list.children) as HTMLElement[]).find((x) => x.dataset.cueId === currentId) : undefined;
+    if (el) {
+      el.scrollIntoView?.({ block: 'nearest' });
+      return;
+    }
+    const sc = scroller();
+    const i = cues.findIndex((c) => c.id === currentId);
+    if (!sc || !list || i < 0) return;
+    const off = offsetsOf();
+    const listTop = list.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop;
+    const rowTop = listTop + off[i]!;
+    const rowBottom = listTop + off[i + 1]!;
+    if (rowTop < sc.scrollTop) sc.scrollTop = rowTop;
+    else if (rowBottom > sc.scrollTop + sc.clientHeight) sc.scrollTop = rowBottom - sc.clientHeight;
+  }, [currentId, isPlaying, cues, offsetsOf, scroller]);
+
+  // Visible range: the measured window, or (before the first measurement of a long
+  // list) just the first rows, or everything when the list cannot be windowed.
+  let first = 0;
+  let last = n - 1;
+  const windowed = win !== null || canWindow();
+  if (windowed && n > 0) {
+    first = Math.min(win?.first ?? 0, n - 1);
+    last = Math.min(win?.last ?? 30, n - 1);
+    const fi = focusedId ? cues.findIndex((c) => c.id === focusedId) : -1;
+    if (fi >= 0 && fi >= first - KEEP_FOCUSED_ROWS && fi <= last + KEEP_FOCUSED_ROWS) {
+      first = Math.min(first, fi);
+      last = Math.max(last, fi);
+    }
+  }
+  let style: { paddingTop: number; paddingBottom: number } | undefined;
+  if (windowed && n > 0) {
+    const off = offsetsOf();
+    style = { paddingTop: off[first]!, paddingBottom: off[n]! - off[last + 1]! };
+  }
+  const rows: ReactNode[] = [];
+  for (let i = first; i <= last && i < n; i++) {
+    const c = cues[i]!;
+    rows.push(<CueRow key={c.id} clip={c} index={i} current={c.id === currentId} selected={selected.has(c.id)} locked={locked} onStatus={onStatus} />);
+  }
+  return (
+    <ul
+      ref={listRef}
+      className="p3-cue-list"
+      style={style}
+      onFocus={(e) => {
+        const id = (e.target as HTMLElement).closest<HTMLElement>('[data-cue-id]')?.dataset.cueId;
+        if (id) setFocusedId(id);
+      }}
+      onBlur={(e) => {
+        const next = e.relatedTarget as HTMLElement | null;
+        if (!next || !e.currentTarget.contains(next)) setFocusedId(null);
+      }}
+    >
+      {rows}
+    </ul>
+  );
+});
 
 export default function SubtitlesPanel() {
   const project = useEditorStore((s) => s.project);
-  const currentTime = useEditorStore((s) => s.currentTime);
   const selectedIds = useEditorStore((s) => s.selectedClipIds);
   const tracks = subtitleTracks(project);
   const [trackChoice, setTrackChoice] = useState<Id | null>(null);
   const trackId = tracks.find((t) => t.id === trackChoice)?.id ?? tracks[0]?.id ?? null;
   const track = tracks.find((t) => t.id === trackId);
-  const cues = useMemo(() => cueClips(project, trackId), [project, trackId]);
-  const selectedCues = cues.filter((c) => selectedIds.includes(c.id));
+  // Same array object while no cue of the track changed (edits elsewhere keep the list untouched).
+  const cues = useStableArray(useMemo(() => cueClips(project, trackId), [project, trackId]));
+  const selectedCues = useMemo(() => {
+    const sel = new Set(selectedIds);
+    return cues.filter((c) => sel.has(c.id));
+  }, [cues, selectedIds]);
+  const rootRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<Status>(null);
   const [replace, setReplace] = useState(false);
   const [shiftMs, setShiftMs] = useState(100);
@@ -439,7 +653,7 @@ export default function SubtitlesPanel() {
   };
 
   return (
-    <div className="p3-panel p3-subs">
+    <div className="p3-panel p3-subs" ref={rootRef}>
       <div className="p3-toolbar">
         <button type="button" className="btn btn-primary" disabled={!!track?.locked} onClick={() => addCueAt(trackId, S().currentTime) || setStatus({ kind: 'error', text: 'No room for a cue at the playhead.' })}>
           + Add cue
@@ -524,7 +738,7 @@ export default function SubtitlesPanel() {
             setStatus(ok ? { kind: 'info', text: 'Cue start set to playhead; following cues shifted.' } : { kind: 'error', text: 'Sync rejected (would overlap the previous cue, or track locked).' });
           }}
         >
-          Start selected at playhead ⇢ shift following
+          Start selected at playhead, shift following
         </button>
       </Section>
 
@@ -536,19 +750,7 @@ export default function SubtitlesPanel() {
         {track ? `${track.name}: ${plural(cues.length, 'cue')}` : 'No subtitle track yet — add or import cues.'}
         {track?.locked && ' (locked)'}
       </div>
-      <ul className="p3-cue-list">
-        {cues.map((c, i) => (
-          <CueRow
-            key={c.id}
-            clip={c}
-            index={i}
-            current={currentTime >= c.start - 1e-6 && currentTime < c.start + c.duration - 1e-6}
-            selected={selectedIds.includes(c.id)}
-            locked={!!track?.locked}
-            onStatus={setStatus}
-          />
-        ))}
-      </ul>
+      <CueList cues={cues} trackId={trackId} locked={!!track?.locked} selectedIds={selectedIds} onStatus={setStatus} scrollerRef={rootRef} />
     </div>
   );
 }

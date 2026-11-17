@@ -1,10 +1,10 @@
-import { resolveSubtitleStyle, type Canvas2D, type ClipRenderer, type Project, type SubtitleClip, type SubtitleStyle, type WordHighlight } from '../../core';
+import { resolveSubtitleStyle, type Canvas2D, type ClipRenderer, type Project, type SubtitleClip, type SubtitleStyle, type WordHighlight, type WordTiming } from '../../core';
 import {
   applyShadow,
   clearShadow,
   contextMeasure,
   drawTextLayout,
-  layoutText,
+  layoutTextCached,
   lineAnchorX,
   lineCenterY,
   roundedRectPath,
@@ -27,7 +27,8 @@ export interface SubtitlePlacement {
 /**
  * Layout + position of a subtitle: horizontally centered, block bottom at
  * `bottomMargin` above the canvas bottom, wrapped at `maxWidth`, and clamped
- * inside the safe area.
+ * inside the safe area. The layout comes from the shared layout cache
+ * (read-only).
  */
 export function placeSubtitle(project: Project, clip: SubtitleClip, canvasW: number, canvasH: number, measure: MeasureFn): SubtitlePlacement {
   const style = resolveSubtitleStyle(project, clip);
@@ -36,7 +37,7 @@ export function placeSubtitle(project: Project, clip: SubtitleClip, canvasW: num
   const pad = style.background ? Math.max(0, style.background.padding) : 0;
   const frac = Number.isFinite(style.maxWidth) && style.maxWidth > 0 ? style.maxWidth : 0.85;
   const wrapAt = Math.max(1, Math.min(frac * canvasW, maxBlock) - pad * 2);
-  const layout = layoutText(clip.text, style, wrapAt, measure);
+  const layout = layoutTextCached(clip.text, style, wrapAt, measure);
   const bottom = canvasH * (1 - (Number.isFinite(style.bottomMargin) ? style.bottomMargin : 0.08));
   let cy = bottom - layout.boxHeight / 2;
   const minCy = safe + layout.boxHeight / 2;
@@ -77,11 +78,33 @@ export function layoutPieces(ctx: Pick<Canvas2D, 'measureText'>, layout: TextLay
   return out;
 }
 
+/** Pieces per (cached, immutable) layout object, keyed by align + tokens. */
+const piecesCache = new WeakMap<TextLayout, Map<string, Piece[]>>();
+
+/**
+ * `layoutPieces` memoized on the layout object: cached layouts are shared and
+ * immutable, so their word pieces (one measureText per word) are computed once.
+ * `ctx` must have `ctx.font === layout.font` (as in `drawHighlightedLayout`).
+ */
+export function layoutPiecesCached(ctx: Pick<Canvas2D, 'measureText'>, layout: TextLayout, style: SubtitleStyle, tokens: readonly string[]): readonly Piece[] {
+  let byKey = piecesCache.get(layout);
+  if (!byKey) piecesCache.set(layout, (byKey = new Map()));
+  const key = `${style.align}\u0000${tokens.join('\u0001')}`;
+  let pieces = byKey.get(key);
+  if (!pieces) {
+    pieces = layoutPieces(ctx, layout, style, tokens);
+    // Bounded: a layout only ever sees a handful of align/token combinations.
+    if (byKey.size >= 8) byKey.clear();
+    byKey.set(key, pieces);
+  }
+  return pieces;
+}
+
 /**
  * Makes room for the active word: when it grows ("pop") or gets a box, the
  * other words on its line move apart by the extra width so nothing overlaps.
  */
-export function spreadAroundActive(pieces: Piece[], active: number, pop: number, boxPad: number): Piece[] {
+export function spreadAroundActive(pieces: readonly Piece[], active: number, pop: number, boxPad: number): readonly Piece[] {
   if (active < 0 || (pop <= 1 && boxPad <= 0)) return pieces;
   const out = pieces.map((p) => ({ ...p }));
   const lines = new Set(out.filter((p) => p.word === active).map((p) => p.y));
@@ -114,7 +137,7 @@ export function drawHighlightedLayout(ctx: Canvas2D, layout: TextLayout, style: 
   ctx.textBaseline = 'middle';
   const pop = hl.pop > 0 ? hl.pop : 1;
   const padX = layout.fontSize * 0.14;
-  const pieces = spreadAroundActive(layoutPieces(ctx, layout, style, tokens), active, pop, hl.mode === 'box' ? padX : 0);
+  const pieces = spreadAroundActive(layoutPiecesCached(ctx, layout, style, tokens), active, pop, hl.mode === 'box' ? padX : 0);
   /** Runs `draw` with the "pop" scale around the piece center for the active word. */
   const withPop = (p: Piece, draw: () => void) => {
     if (p.word !== active || pop === 1) return draw();
@@ -175,6 +198,15 @@ export function drawHighlightedLayout(ctx: Canvas2D, layout: TextLayout, style: 
   ctx.restore();
 }
 
+const wordDataCache = new WeakMap<SubtitleClip, { times: WordTiming[]; tokens: string[] }>();
+
+/** Word timings + tokens of a clip, memoized on the (immutable) clip object. */
+function wordData(clip: SubtitleClip): { times: WordTiming[]; tokens: string[] } {
+  let d = wordDataCache.get(clip);
+  if (!d) wordDataCache.set(clip, (d = { times: resolveWordTimes(clip), tokens: tokenize(clip.text) }));
+  return d;
+}
+
 /** Canvas renderer for `subtitle` clips. */
 export const renderSubtitle: ClipRenderer<'subtitle'> = (ctx, clip, localTime, env) => {
   if (!clip.text.trim()) return;
@@ -183,9 +215,9 @@ export const renderSubtitle: ClipRenderer<'subtitle'> = (ctx, clip, localTime, e
   ctx.translate(cx, cy);
   const hl = style.highlight;
   if (hl && hl.mode !== 'none') {
-    const times = resolveWordTimes(clip);
+    const { times, tokens } = wordData(clip);
     const active = activeWordIndex(times, localTime);
-    drawHighlightedLayout(ctx, layout, style, hl, tokenize(clip.text), active, active >= 0 ? wordProgress(times[active]!, localTime) : 0);
+    drawHighlightedLayout(ctx, layout, style, hl, tokens, active, active >= 0 ? wordProgress(times[active]!, localTime) : 0);
   } else {
     drawTextLayout(ctx, layout, style);
   }

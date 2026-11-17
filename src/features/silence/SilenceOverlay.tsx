@@ -5,15 +5,15 @@ import { isStale, useSilenceStore } from './silenceStore';
 const base: CSSProperties = { position: 'absolute', top: 0, bottom: 0, pointerEvents: 'none', boxSizing: 'border-box' };
 const includedStyle: CSSProperties = {
   ...base,
-  background: 'rgba(255, 107, 107, 0.22)',
-  borderLeft: '1px solid rgba(255, 107, 107, 0.85)',
-  borderRight: '1px solid rgba(255, 107, 107, 0.85)',
+  background: 'var(--danger-soft)',
+  borderLeft: '1px solid var(--danger)',
+  borderRight: '1px solid var(--danger)',
 };
 const excludedStyle: CSSProperties = {
   ...base,
-  background: 'repeating-linear-gradient(135deg, rgba(160,165,180,0.14) 0 6px, transparent 6px 12px)',
-  borderLeft: '1px dashed rgba(160, 165, 180, 0.7)',
-  borderRight: '1px dashed rgba(160, 165, 180, 0.7)',
+  background: 'repeating-linear-gradient(135deg, var(--border-strong) 0 6px, transparent 6px 12px)',
+  borderLeft: '1px dashed var(--border-hover)',
+  borderRight: '1px dashed var(--border-hover)',
 };
 
 /** Detected silences as bands over the timeline (never intercepts pointer events). */

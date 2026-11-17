@@ -124,6 +124,36 @@ describe('store-level cue actions', () => {
     expect(cueClips(S().project, first.trackId).map((c) => c.text)).toEqual(['only']);
   });
 
+  it('import of many cues (e.g. auto captions) is ONE batched clip update, keeping word timings and counts', () => {
+    const t = S().addTrack('subtitle');
+    const cues = Array.from({ length: 400 }, (_, i) => ({
+      start: i * 0.6,
+      end: i * 0.6 + 0.5,
+      text: `w${i} x${i}`,
+      words: [
+        { text: `w${i}`, start: i * 0.6, end: i * 0.6 + 0.2 },
+        { text: `x${i}`, start: i * 0.6 + 0.25, end: i * 0.6 + 0.45 },
+      ],
+    }));
+    cues.push({ start: 1.25, end: 1.45, text: 'inside cue 2', words: [] }); // no room: skipped
+    const pastBefore = S().past.length;
+    let projectUpdates = 0;
+    const unsub = useEditorStore.subscribe((s, prev) => void (s.project !== prev.project && projectUpdates++));
+    const r = importCues(cues, { trackId: t });
+    unsub();
+    expect(projectUpdates).toBe(1);
+    expect(S().past.length).toBe(pastBefore + 1);
+    expect(r).toMatchObject({ added: 400, skipped: 1, trimmed: 0, trackId: t });
+    const placed = cueClips(S().project, t);
+    expect(placed).toHaveLength(400);
+    expect(placed[3]!.start).toBeCloseTo(1.8);
+    expect(placed[3]!.text).toBe('w3 x3');
+    expect(placed[3]!.words).toEqual([
+      { text: 'w3', start: 0, end: 0.2 },
+      { text: 'x3', start: 0.25, end: 0.45 },
+    ]);
+  });
+
   it('import refuses a locked track', () => {
     const t = S().addTrack('subtitle');
     S().updateTrack(t, { locked: true });

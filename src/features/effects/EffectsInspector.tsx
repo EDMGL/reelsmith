@@ -1,4 +1,4 @@
-import { inspectorTargets, useEditorStore, type InspectorProps } from '../../core';
+import { Icon, inspectorTargets, useEditorStore, type InspectorProps } from '../../core';
 import {
   addEffectToClips,
   applyPresetToClips,
@@ -12,7 +12,7 @@ import {
   syncEffects,
 } from './actions';
 import { FILTER_PRESETS, getEffectDefinition, listEffectDefinitions, matchPreset, resolveParams } from './definitions';
-import { EffectSlider } from './ui';
+import { EffectIcon, EffectSlider } from './ui';
 import './effects.css';
 
 /** Inspector section "Effects" for video/image clips: the clip's effect stack. */
@@ -79,7 +79,7 @@ export default function EffectsInspector(props: InspectorProps<'video' | 'image'
               <div className="fx-item-head">
                 <span className="fx-name muted">Unknown effect “{fx.effectType}”</span>
                 <button type="button" className="btn btn-small btn-icon-only btn-danger" title="Remove" aria-label="Remove effect" onClick={() => removeEffect(clip.id, fx.id)}>
-                  ×
+                  <Icon name="close" size={14} />
                 </button>
               </div>
             </div>
@@ -96,11 +96,14 @@ export default function EffectsInspector(props: InspectorProps<'video' | 'image'
                   aria-label={`Enable ${def.label}`}
                   onChange={(e) => setEffectEnabled(clip.id, fx.id, e.target.checked)}
                 />
+                <span className="fx-item-icon" aria-hidden>
+                  <EffectIcon def={def} />
+                </span>
                 <span className="fx-name">{def.label}</span>
               </label>
               <span className="fx-tools">
                 <button type="button" className="btn btn-small btn-icon-only" title="Move up" aria-label="Move up" disabled={i === 0} onClick={() => moveEffect(clip.id, fx.id, -1)}>
-                  ↑
+                  <Icon name="arrow-up" size={14} />
                 </button>
                 <button
                   type="button"
@@ -110,10 +113,10 @@ export default function EffectsInspector(props: InspectorProps<'video' | 'image'
                   disabled={i === clip.effects.length - 1}
                   onClick={() => moveEffect(clip.id, fx.id, 1)}
                 >
-                  ↓
+                  <Icon name="arrow-down" size={14} />
                 </button>
                 <button type="button" className="btn btn-small btn-icon-only" title="Reset" aria-label={`Reset ${def.label}`} onClick={() => resetEffect(clip.id, fx.id)}>
-                  ↺
+                  <Icon name="reset" size={14} />
                 </button>
                 <button
                   type="button"
@@ -122,7 +125,7 @@ export default function EffectsInspector(props: InspectorProps<'video' | 'image'
                   aria-label={`Remove ${def.label}`}
                   onClick={() => removeEffect(clip.id, fx.id)}
                 >
-                  ×
+                  <Icon name="close" size={14} />
                 </button>
               </span>
             </div>

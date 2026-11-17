@@ -1,48 +1,82 @@
+/* Motion inspector. Tokens only (see app/theme.css). */
 .mo-presets {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: var(--space-2);
 }
 .mo-preset {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 7px 4px;
-  border-radius: var(--radius);
+  justify-content: center;
+  gap: var(--space-1);
+  min-width: 0;
+  min-height: 52px;
+  padding: var(--space-2) var(--space-1);
   border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   background: var(--surface-2);
-  color: var(--text-dim);
-  font-size: 11px;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
 }
-.mo-preset:hover {
+.mo-preset:hover:not(:disabled) {
+  background: var(--surface-3);
+  border-color: var(--border-hover);
   color: var(--text);
-  border-color: var(--border-strong, var(--border));
 }
 .mo-preset.active {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
   color: var(--accent);
-  border-color: var(--accent);
-  background: var(--accent-soft, var(--surface-3));
+}
+.mo-preset:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .mo-icon {
-  font-size: 16px;
+  display: grid;
+  place-items: center;
+  height: 16px;
+  font-size: var(--fs-lg);
   line-height: 1;
+}
+.mo-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .mo-focus {
   display: grid;
-  grid-template-columns: repeat(3, 18px);
-  gap: 4px;
+  grid-template-columns: repeat(3, 20px);
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-0);
+  width: max-content;
 }
 .mo-focus button {
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
   background: var(--surface-2);
   cursor: pointer;
-  padding: 0;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+.mo-focus button:hover:not(:disabled) {
+  background: var(--surface-3);
+  border-color: var(--border-hover);
 }
 .mo-focus button.on {
   background: var(--accent);
@@ -50,4 +84,12 @@
 }
 .mo-alt {
   width: 100%;
+  height: auto;
+  min-height: var(--control-h-sm);
+  padding-block: var(--space-1);
+  white-space: normal;
+}
+.mo-tip {
+  margin: 0;
+  line-height: 1.5;
 }

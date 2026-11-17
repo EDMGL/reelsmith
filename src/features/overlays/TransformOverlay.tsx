@@ -10,9 +10,9 @@
  * (they bubble up from the canvas), so whatever P2 renders keeps its events.
  */
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { useEditorStore, type PreviewOverlayProps, type Transform, type VisualClip } from '../../core';
+import { Icon, clipContainsTime, getTrack, isVisualClip, useEditorStore, type EditorState, type PreviewOverlayProps, type Transform, type VisualClip } from '../../core';
 import { getSharedMeasure } from '../text/textLayout';
-import { clipBox, hitTestClips, visualClipsAt, type ClipBox, type Point } from './geometry';
+import { clipBox, hitTestClips, type ClipBox, type Point } from './geometry';
 import { moveTransform, nudgeTransform, rotationFromDrag, scaleFromDrag, type Guide } from './transformMath';
 import './overlays.css';
 
@@ -43,14 +43,24 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return false;
 }
 
-/** The selected visual clip if exactly one is selected and it is drawn at the playhead. */
-function useSelectedVisual(): { clip: VisualClip; locked: boolean } | null {
-  const ids = useEditorStore((s) => s.selectedClipIds);
-  const t = useEditorStore((s) => s.currentTime);
-  const project = useEditorStore((s) => s.project);
-  if (ids.length !== 1) return null;
-  const hit = visualClipsAt(project, t, getSharedMeasure(), true).find((h) => h.clip.id === ids[0]);
-  return hit ? { clip: hit.clip, locked: hit.track.locked } : null;
+/**
+ * The selected visual clip if exactly one is selected and it is drawn at the
+ * playhead (visible track, covering `currentTime`). The selector returns the
+ * clip OBJECT (or null), so playback ticks re-render nothing unless the
+ * selected clip appears/disappears at the playhead or is edited.
+ */
+export function selectedVisualAt(s: Pick<EditorState, 'selectedClipIds' | 'project' | 'currentTime'>): VisualClip | null {
+  if (s.selectedClipIds.length !== 1) return null;
+  const clip = s.project.clips[s.selectedClipIds[0]!];
+  if (!clip || !isVisualClip(clip) || !clipContainsTime(clip, s.currentTime)) return null;
+  const track = getTrack(s.project, clip.trackId);
+  return track && !track.hidden ? clip : null;
+}
+
+function useSelectedVisual(project: PreviewOverlayProps['project']): { clip: VisualClip; locked: boolean } | null {
+  const clip = useEditorStore(selectedVisualAt);
+  if (!clip) return null;
+  return { clip, locked: !!getTrack(project, clip.trackId)?.locked };
 }
 
 export default function TransformOverlay({ project, displayWidth, displayHeight, scale }: PreviewOverlayProps) {
@@ -60,7 +70,7 @@ export default function TransformOverlay({ project, displayWidth, displayHeight,
   const [guides, setGuides] = useState<Guide[]>([]);
   const [dragging, setDragging] = useState<DragMode | null>(null);
   const [, setFontTick] = useState(0);
-  const selected = useSelectedVisual();
+  const selected = useSelectedVisual(project);
 
   /** Client coords -> project px, using the live rect of the overlay (robust to CSS transitions). */
   const toProject = useCallback((clientX: number, clientY: number): Point => {
@@ -238,7 +248,7 @@ export default function TransformOverlay({ project, displayWidth, displayHeight,
         >
           {selected.locked ? (
             <span className="p3-xf-lock" title="Track is locked">
-              🔒
+              <Icon name="lock" size={12} />
             </span>
           ) : (
             <>

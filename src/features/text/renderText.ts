@@ -1,9 +1,9 @@
 import { drawWithTransform, type ClipRenderer, type TextClip } from '../../core';
-import { TEXT_WRAP_FRACTION, contextMeasure, drawTextLayout, layoutText, type MeasureFn, type TextLayout } from './textLayout';
+import { TEXT_WRAP_FRACTION, contextMeasure, drawTextLayout, layoutTextCached, type MeasureFn, type TextLayout } from './textLayout';
 
-/** Layout of a text clip (unscaled; the transform scale is applied around it). */
+/** Layout of a text clip (unscaled; the transform scale is applied around it). Cached: read-only result. */
 export function layoutTextClip(clip: Pick<TextClip, 'text' | 'style'>, canvasWidth: number, measure: MeasureFn): TextLayout {
-  return layoutText(clip.text, clip.style, canvasWidth * TEXT_WRAP_FRACTION, measure);
+  return layoutTextCached(clip.text, clip.style, canvasWidth * TEXT_WRAP_FRACTION, measure);
 }
 
 /** Canvas renderer for `text` clips (registered with `registerClipRenderer('text', …)`). */

@@ -1,53 +1,63 @@
+/* Audio cleanup (noise reduction) inspector section (tokens only; see app/theme.css).
+   Lives inside an inspector section, which provides the outer padding. */
 .dn {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-3);
+  min-width: 0;
   padding: 0;
 }
 .dn-msg {
   margin: 0;
-  font-size: 12px;
   color: var(--text-dim);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
 }
-.dn-error {
-  color: var(--danger);
+.dn-badge,
+.dn-status {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 .dn-badge {
-  margin: 0;
-  font-size: 12px;
-  color: var(--accent);
+  align-items: center;
+  font-weight: var(--fw-medium);
 }
-.dn-strength {
+.dn-status .icon {
+  margin-top: 1px;
+}
+
+/* Strength (shared .segmented, full width) */
+.segmented.dn-strength {
   display: flex;
 }
 .dn-strength button {
   flex: 1;
-  padding: 6px 4px;
+  min-height: var(--control-h-sm);
 }
+
 .dn-actions {
   display: flex;
-  gap: 8px;
   flex-wrap: wrap;
+  gap: var(--space-2);
 }
+
+/* Progress: bar on its own row, label + cancel below */
 .dn-progress {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2) var(--space-3);
 }
 .dn-progress small {
-  color: var(--text-dim);
   flex: 1;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
 }
 .dn-bar {
   flex-basis: 100%;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--surface-3);
-  overflow: hidden;
 }
-.dn-bar > div {
-  height: 100%;
-  background: var(--accent);
-  transition: width 0.15s linear;
+.dn-bar > span {
+  transition: width var(--dur) linear;
 }

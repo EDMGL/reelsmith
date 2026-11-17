@@ -1,4 +1,4 @@
-import { formatDuration, getProjectDuration, useEditorStore } from '../../core';
+import { formatDuration, getProjectDuration, Icon, useEditorStore } from '../../core';
 import { matchPreset, SILENCE_PRESETS } from './presets';
 import { includedRanges, isStale, riskyLockedTracks, useSilenceStore } from './silenceStore';
 import { totalLength } from './timelineSilence';
@@ -57,10 +57,10 @@ export default function SilencePanel() {
 
   return (
     <div className="sil-panel">
-      <h3 className="sil-title">Silence removal</h3>
+      <h3 className="section-title sil-title">Silence removal</h3>
 
       <div className="sil-group">
-        <div className="sil-label">Style</div>
+        <div className="section-title sil-label">Style</div>
         <div className="segmented sil-presets" role="group" aria-label="Silence removal style">
           {SILENCE_PRESETS.map((x) => (
             <button key={x.id} type="button" className={preset?.id === x.id ? 'active' : ''} aria-pressed={preset?.id === x.id} title={x.hint} onClick={() => s.applyPreset(x.id)}>
@@ -75,7 +75,7 @@ export default function SilencePanel() {
       </div>
 
       <fieldset className="sil-group" disabled={running}>
-        <legend>Analyze</legend>
+        <legend className="section-title">Analyze</legend>
         <label className="sil-radio">
           <input type="radio" name="sil-scope" checked={s.scope === 'timeline'} onChange={() => s.setScope('timeline')} />
           Whole timeline (all audible clips)
@@ -139,7 +139,8 @@ export default function SilencePanel() {
               Detect silence
             </button>
             <button type="button" className="btn" onClick={() => void s.detectAndRemove()} title="Find and cut every silence in one go (one undo step)">
-              ⚡ Detect &amp; cut
+              <Icon name="bolt" />
+              Detect &amp; cut
             </button>
           </>
         )}
@@ -147,26 +148,36 @@ export default function SilencePanel() {
 
       {running && (
         <div className="sil-progress" role="status">
-          <div className="sil-bar">
-            <div style={{ width: `${Math.round(s.progress.fraction * 100)}%` }} />
+          <div className="progress sil-bar">
+            <span style={{ width: `${Math.round(s.progress.fraction * 100)}%` }} />
           </div>
           <small>
             {s.progress.label} {Math.round(s.progress.fraction * 100)}%
           </small>
         </div>
       )}
-      {s.error && <p className="sil-msg sil-error">{s.error}</p>}
-      {s.notice && <p className="sil-msg">{s.notice}</p>}
+      {s.error && (
+        <p className="status-msg error sil-status">
+          <Icon name="alert" size={14} />
+          {s.error}
+        </p>
+      )}
+      {s.notice && (
+        <p className="status-msg sil-status">
+          <Icon name="info" size={14} />
+          {s.notice}
+        </p>
+      )}
 
       {s.result && (
         <div className="sil-result">
-          {stale && <p className="sil-msg sil-warn">The timeline changed since detection. Run Detect again before removing.</p>}
+          {stale && <p className="status-msg warning sil-status">The timeline changed since detection. Run Detect again before removing.</p>}
           {locked.length > 0 && (
-            <p className="sil-msg sil-warn">
+            <p className="status-msg warning sil-status">
               Locked track{locked.length > 1 ? 's' : ''} {locked.map((n) => `"${n}"`).join(', ')} will not be cut and will go out of sync. Unlock to keep everything aligned.
             </p>
           )}
-          {s.result.skipped.length > 0 && <p className="sil-msg sil-warn">Skipped (treated as no audio): {s.result.skipped.join('; ')}</p>}
+          {s.result.skipped.length > 0 && <p className="status-msg warning sil-status">Skipped (treated as no audio): {s.result.skipped.join('; ')}</p>}
 
           <div className="sil-hero" data-testid="silence-hero">
             <strong>−{removable.toFixed(1)} s</strong>
@@ -227,7 +238,7 @@ export default function SilencePanel() {
                     {r.start.toFixed(2)}s – {r.end.toFixed(2)}s
                   </button>
                   <button type="button" className="sil-listen" title="Listen (1 s before to 1 s after)" aria-label={`Listen to silence ${i + 1}`} onClick={() => listen(r.start, r.end)}>
-                    ▶
+                    <Icon name="play" size={12} />
                   </button>
                   <small>{(r.end - r.start).toFixed(2)}s</small>
                 </li>
