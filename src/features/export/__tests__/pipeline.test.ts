@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AUDIO_CHUNK_FRAMES, ExportError, MAX_VIDEO_QUEUE, runExport, type ExportProgress } from '../pipeline';
+import { AUDIO_CHUNK_FRAMES, ExportError, MAX_VIDEO_QUEUE, PROGRESS_INTERVAL_MS, YIELD_INTERVAL_MS, runExport, type ExportProgress } from '../pipeline';
 import { frameDurationUs, frameTimestampUs } from '../plan';
 import { CODECS, fakeAudio, makeWorld, plan } from './fakes';
 
@@ -122,5 +122,31 @@ describe('runExport orchestration', () => {
       throw new Error('quota exceeded');
     };
     await expect(runExport(plan(), CODECS, w.deps)).rejects.toThrow(/Writing the file failed: quota exceeded/);
+  });
+
+  it('yields to the UI by elapsed time, not every few frames', async () => {
+    const w = makeWorld();
+    let yields = 0;
+    let t = 0;
+    w.deps.now = () => (t += 1); // 1 ms per call
+    w.deps.yieldToUi = async () => {
+      yields++;
+    };
+    await runExport(plan({ frameCount: 200, duration: 200 / 30 }), { ...CODECS, audio: null }, w.deps);
+    expect(yields).toBeGreaterThan(0);
+    expect(yields).toBeLessThan(200 / 4 / 2);
+    expect(YIELD_INTERVAL_MS).toBeGreaterThan(4);
+  });
+
+  it('throttles progress but always reports the last frame', async () => {
+    const w = makeWorld();
+    let t = 0;
+    w.deps.now = () => (t += 1);
+    const progress: ExportProgress[] = [];
+    await runExport(plan({ frameCount: 300, duration: 10 }), { ...CODECS, audio: null }, w.deps, { onProgress: (x) => progress.push(x) });
+    const video = progress.filter((x) => x.phase === 'video');
+    expect(video.length).toBeLessThan(300 / 5);
+    expect(video[video.length - 1]!.framesDone).toBe(300);
+    for (let i = 2; i < video.length - 1; i++) expect(video[i]!.elapsedMs - video[i - 1]!.elapsedMs).toBeGreaterThanOrEqual(PROGRESS_INTERVAL_MS);
   });
 });

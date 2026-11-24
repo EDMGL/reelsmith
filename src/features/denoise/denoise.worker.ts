@@ -25,7 +25,7 @@ import {
   type OutputFormat,
 } from 'mediabunny';
 import type { DenoiseMessage, DenoiseRequest, DenoiseResponse } from './protocol';
-import { denoiseChannels } from './spectralGate';
+import { cleanChannels } from './voiceClean';
 
 const scope = self as unknown as {
   onmessage: ((e: MessageEvent<DenoiseMessage>) => void) | null;
@@ -175,7 +175,7 @@ async function run(req: DenoiseRequest): Promise<void> {
     const pcm = parts.map((p) => concat(p, total));
 
     // 2. denoise
-    const cleaned = denoiseChannels(pcm, sampleRate, options, {
+    const cleaned = cleanChannels(pcm, sampleRate, options, {
       shouldAbort: () => cancelled.has(id),
       onProgress: (f) => {
         if (performance.now() - lastPost > 100) {

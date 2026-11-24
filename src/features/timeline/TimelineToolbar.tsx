@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { IconName } from '../../core';
-import { Icon, ZOOM_MAX, ZOOM_MIN, clipContainsTime, getProjectDuration, ops, useEditorStore, type Clip, type Project, type TrackKind } from '../../core';
+import { Icon, ZOOM_MAX, ZOOM_MIN, adjacentEditPoint, clipContainsTime, getProjectDuration, ops, useEditorStore, type Clip, type Project, type TrackKind } from '../../core';
 import { modKey } from './ContextMenu';
 import { fitZoom } from './geometry';
 import { useTimelineUi } from './timelineUi';
@@ -52,6 +52,32 @@ export function TimelineToolbar({ viewportPx, extras }: { viewportPx: number; ex
   const has = selected.length > 0;
   return (
     <div className="timeline-toolbar">
+      <div className="tool-group" role="group" aria-label="Navigate">
+        <button type="button" className="btn btn-small btn-ghost btn-icon-only" onClick={() => st().setCurrentTime(0)} title="Go to start (Home)" aria-label="Go to start">
+          <Icon name="skip-start" size={15} />
+        </button>
+        <button
+          type="button"
+          className="btn btn-small btn-ghost btn-icon-only"
+          onClick={() => st().setCurrentTime(adjacentEditPoint(st().project, st().currentTime, -1))}
+          title="Previous cut (↑)"
+          aria-label="Previous cut"
+        >
+          <Icon name="frame-back" size={15} />
+        </button>
+        <button
+          type="button"
+          className="btn btn-small btn-ghost btn-icon-only"
+          onClick={() => st().setCurrentTime(adjacentEditPoint(st().project, st().currentTime, 1))}
+          title="Next cut (↓)"
+          aria-label="Next cut"
+        >
+          <Icon name="frame-forward" size={15} />
+        </button>
+        <button type="button" className="btn btn-small btn-ghost btn-icon-only" disabled={duration <= 0} onClick={() => st().setCurrentTime(duration)} title="Go to end (End)" aria-label="Go to end">
+          <Icon name="skip-end" size={15} />
+        </button>
+      </div>
       <div className="tool-group" role="group" aria-label="Edit">
         <button type="button" className="btn btn-small btn-ghost" disabled={!canSplit} onClick={() => st().splitAtPlayhead()} title="Split at playhead (S)" aria-label="Split">
           <TL icon="split" label="Split" />

@@ -1,9 +1,22 @@
 import { useMemo, useRef, useState, type DragEvent } from 'react';
 import { ASSET_DRAG_MIME, formatDuration, Icon, isFileDrag, setDragPayload, useEditorStore, type IconName, type MediaAsset } from '../../core';
+import { useProxyStore } from '../proxy/proxyManager';
 import { importFiles } from './importMedia';
 import './media.css';
 
 const KIND_ICON: Record<MediaAsset['kind'], IconName> = { video: 'film', audio: 'waveform', image: 'image' };
+
+/** Preview-copy state of a video: building %, queued, ready (smooth preview) or failed (original plays). */
+function ProxyStatus({ asset }: { asset: MediaAsset }) {
+  const building = useProxyStore((s) => s.building[asset.id]);
+  const queued = useProxyStore((s) => s.queued.includes(asset.id));
+  const failed = useProxyStore((s) => s.failed[asset.id]);
+  if (asset.previewURL) return <span title="Preview plays a light copy; export uses the original"> · smooth preview</span>;
+  if (building !== undefined) return <span title="Making a light preview copy for smooth playback"> · preparing preview {Math.round(building * 100)}%</span>;
+  if (queued) return <span title="Waiting to make a light preview copy"> · preview queued</span>;
+  if (failed) return <span title={failed}> · original preview</span>;
+  return null;
+}
 
 function AssetCard({ asset, usage, view }: { asset: MediaAsset; usage: number; view: 'grid' | 'list' }) {
   const addAssetClip = useEditorStore((s) => s.addAssetClip);
@@ -53,6 +66,7 @@ function AssetCard({ asset, usage, view }: { asset: MediaAsset; usage: number; v
             : asset.kind === 'audio'
               ? 'Audio'
               : `${asset.width}×${asset.height}${asset.kind === 'video' && !asset.hasAudio ? ' · no audio' : ''}`}
+          {asset.kind === 'video' && asset.status === 'ready' && <ProxyStatus asset={asset} />}
         </span>
       </div>
       <div className="asset-actions">

@@ -38,6 +38,10 @@ export default function VoiceoverPanel() {
           <input type="checkbox" checked={v.muteTimeline} onChange={(e) => useVoiceoverStore.setState({ muteTimeline: e.target.checked })} />
           Mute the video while recording
         </label>
+        <label className="vo-check" title="Removes room echo, low rumble and background hiss, and evens out the level of each take">
+          <input type="checkbox" checked={v.cleanVoice} onChange={(e) => useVoiceoverStore.setState({ cleanVoice: e.target.checked })} />
+          Clean up voice (less echo &amp; noise)
+        </label>
         <label className="vo-check">
           <input type="checkbox" checked={v.useCountdown} onChange={(e) => useVoiceoverStore.setState({ useCountdown: e.target.checked })} />
           3-second countdown

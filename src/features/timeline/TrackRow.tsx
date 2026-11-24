@@ -13,7 +13,22 @@ function TrackHeader({ track, canDelete }: { track: Track; canDelete: boolean })
   const visual = track.kind !== 'audio';
   const audible = track.kind === 'video' || track.kind === 'audio' || track.kind === 'overlay';
   return (
-    <div className={`track-header${selected ? ' selected' : ''}`} style={{ width: HEADER_WIDTH }} onPointerDown={() => selectTrack(track.id)}>
+    <div
+      className={`track-header${selected ? ' selected' : ''}`}
+      style={{ width: HEADER_WIDTH }}
+      title="Click to select every clip on this track (Shift/⌘ adds to the selection)"
+      onPointerDown={(e) => {
+        selectTrack(track.id);
+        // Clicking the header itself (not mute / hide / lock / remove) selects the track's clips.
+        if (e.button !== 0 || (e.target as Element).closest('button')) return;
+        const s = useEditorStore.getState();
+        const ids = Object.values(s.project.clips)
+          .filter((c) => c.trackId === track.id)
+          .sort((a, b) => a.start - b.start)
+          .map((c) => c.id);
+        s.selectClips(ids, e.shiftKey || e.metaKey || e.ctrlKey ? 'add' : 'replace');
+      }}
+    >
       <span className={`track-kind kind-${track.kind}`} aria-hidden>
         <Icon name={KIND_ICON[track.kind]} size={14} />
       </span>

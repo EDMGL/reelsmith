@@ -102,3 +102,36 @@ describe('selectCodecs fallback', () => {
     await expect(selectCodecs(req, api({ video: [], audio: ['opus'] }))).rejects.toThrow(/video encoding|cannot encode/);
   });
 });
+
+describe('hardware encoding preference', () => {
+  it('uses prefer-hardware when supported', async () => {
+    const configs: VideoEncoderConfig[] = [];
+    const a: CodecSupportApi = {
+      async video(c) {
+        configs.push(c);
+        return true;
+      },
+      async audio() {
+        return true;
+      },
+    };
+    const c = await selectCodecs(req, a);
+    expect(c.video.config.hardwareAcceleration).toBe('prefer-hardware');
+    expect(c.video.config.latencyMode).toBe('quality');
+    expect(configs).toHaveLength(1);
+  });
+  it('falls back to the same config without a preference', async () => {
+    const a: CodecSupportApi = {
+      async video(c) {
+        return c.hardwareAcceleration === undefined;
+      },
+      async audio() {
+        return true;
+      },
+    };
+    const c = await selectCodecs(req, a);
+    expect(c.video.codec).toBe('avc');
+    expect(c.video.config.codec).toBe('avc1.640028');
+    expect(c.video.config.hardwareAcceleration).toBeUndefined();
+  });
+});

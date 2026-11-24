@@ -23,16 +23,30 @@ function pickMimeType(): string | undefined {
   return undefined;
 }
 
+/**
+ * Speech-tuned microphone constraints: mono 48 kHz, the browser's echo
+ * canceller / noise suppressor / auto gain, and voice isolation where the
+ * platform offers it (macOS/Chrome: strong background + room suppression).
+ * Unknown constraints are ignored by browsers that lack them.
+ */
+export function voiceConstraints(deviceId?: string): MediaTrackConstraints {
+  return {
+    ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+    channelCount: { ideal: 1 },
+    sampleRate: { ideal: 48000 },
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    ...({ voiceIsolation: true } as MediaTrackConstraints),
+  };
+}
+
+/** Opus at 128 kb/s (the browser default is ~32-64 kb/s, audibly lossy on voice). */
+export const VOICE_BITRATE = 128_000;
+
 export async function openMic(deviceId?: string): Promise<MicSession> {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error('This browser cannot record audio.');
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    },
-  });
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: voiceConstraints(deviceId) });
   let ctx: AudioContext | null = null;
   let analyser: AnalyserNode | null = null;
   try {
@@ -45,7 +59,7 @@ export async function openMic(deviceId?: string): Promise<MicSession> {
   }
   const buf = new Float32Array(1024);
   const mimeType = pickMimeType();
-  const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+  const recorder = new MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: VOICE_BITRATE });
   const chunks: Blob[] = [];
   recorder.ondataavailable = (e) => {
     if (e.data.size > 0) chunks.push(e.data);

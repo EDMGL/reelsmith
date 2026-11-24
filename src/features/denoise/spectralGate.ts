@@ -20,14 +20,26 @@ export interface DenoiseOptions {
   reductionDb: number;
   /** Threshold above the noise mean, in noise standard deviations. */
   nStd: number;
+  /** 0..1: also remove room echo (see voiceClean.ts). */
+  dereverb?: number;
+  /** Speech chain: 80 Hz high-pass before, level normalization after. */
+  voice?: boolean;
 }
 
-export type DenoiseStrength = 'light' | 'medium' | 'strong';
+export type DenoiseStrength = 'light' | 'medium' | 'strong' | 'voice';
 
 export const DENOISE_STRENGTHS: Record<DenoiseStrength, DenoiseOptions & { label: string; hint: string }> = {
   light: { label: 'Light', reductionDb: 9, nStd: 1.0, hint: 'Gentle cleanup, keeps the room sound natural' },
   medium: { label: 'Medium', reductionDb: 15, nStd: 1.5, hint: 'Removes most hum and hiss (recommended)' },
   strong: { label: 'Strong', reductionDb: 24, nStd: 2.0, hint: 'Maximum reduction; may sound slightly processed' },
+  voice: {
+    label: 'Voice',
+    reductionDb: 14,
+    nStd: 1.5,
+    dereverb: 0.8,
+    voice: true,
+    hint: 'For speech: removes room echo, rumble and hiss, and evens out the level',
+  },
 };
 
 // ---------------------------------------------------------------------------

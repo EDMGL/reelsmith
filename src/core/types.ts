@@ -310,6 +310,11 @@ export interface MediaAsset {
   /** RUNTIME ONLY (persisted separately in IndexedDB): the file data. */
   blob?: Blob;
   /**
+   * RUNTIME ONLY: object URL of a light preview copy ("proxy": small, frequent key
+   * frames) used for preview playback. Export always reads `objectURL`.
+   */
+  previewURL?: string;
+  /**
    * Set when this asset was generated from another one by an in-app operation
    * (e.g. noise reduction), so the operation can be re-done or reverted.
    */

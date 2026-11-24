@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useEditorStore } from '../core';
+import { adjacentEditPoint, getProjectDuration, useEditorStore } from '../core';
 
 /** True when the key event targets a text field (shortcuts must not fire there). */
 export function isTypingTarget(target: EventTarget | null): boolean {
@@ -24,7 +24,7 @@ function hasTextSelection(): boolean {
 
 /**
  * Global keyboard shortcuts:
- * Space play/pause · S split at playhead · Del/Backspace delete · Shift+Del ripple delete ·
+ * Home/End start/end · ↑/↓ previous/next cut · Space play/pause · S split at playhead · Del/Backspace delete · Shift+Del ripple delete ·
  * Cmd/Ctrl+Z undo · Shift+Cmd/Ctrl+Z or Cmd/Ctrl+Y redo · Cmd/Ctrl+D duplicate · Cmd/Ctrl+A select all ·
  * ←/→ one frame (Shift: one second) · Home/End · +/- zoom · Esc clear selection.
  * Clipboard (internal, never the system clipboard): Cmd/Ctrl+C copy · Cmd/Ctrl+X cut ·
@@ -101,6 +101,16 @@ export function handleShortcut(e: KeyboardEvent): boolean {
     }
     case 'Home':
       s.setCurrentTime(0);
+      return true;
+    case 'End':
+      s.setCurrentTime(getProjectDuration(s.project));
+      return true;
+    case 'ArrowUp':
+    case 'ArrowDown':
+      // Sliders keep their own up/down stepping.
+      if (e.target instanceof HTMLInputElement && e.target.type === 'range') return false;
+      // Previous / next cut (clip start or end).
+      s.setCurrentTime(adjacentEditPoint(s.project, s.currentTime, key === 'ArrowUp' ? -1 : 1));
       return true;
     case '+':
     case '=':

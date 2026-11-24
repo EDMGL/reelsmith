@@ -91,12 +91,15 @@ export interface RunExportOptions {
 }
 
 /** Max frames waiting in the video encoder before we wait for it. */
-export const MAX_VIDEO_QUEUE = 8;
+export const MAX_VIDEO_QUEUE = 20;
 /** Audio is sent in chunks of this many sample frames. */
 export const AUDIO_CHUNK_FRAMES = 4800;
-/** Wait for pending muxer writes every N frames. */
-const MUX_SYNC_EVERY = 10;
-const YIELD_EVERY = 4;
+/** Wait for the muxer only when this many chunks are still waiting to be written. */
+export const MAX_PENDING_MUX = 64;
+/** Yield to the UI at most this often (ms). */
+export const YIELD_INTERVAL_MS = 24;
+/** Progress callbacks are throttled to this interval (ms); the last frame is always reported. */
+export const PROGRESS_INTERVAL_MS = 100;
 
 function errText(e: unknown): string {
   return e instanceof Error ? e.message || e.name : String(e);
@@ -165,8 +168,15 @@ export async function runExport(plan: ExportPlan, codecs: CodecChoice, deps: Exp
   }
 
   let muxChain: Promise<void> = Promise.resolve();
+  let pendingMux = 0;
   const enqueueMux = (fn: () => Promise<void>) => {
-    muxChain = muxChain.then(() => (fatal ? undefined : fn())).catch(fail);
+    pendingMux++;
+    muxChain = muxChain
+      .then(() => (fatal ? undefined : fn()))
+      .catch(fail)
+      .then(() => {
+        pendingMux--;
+      });
   };
 
   let videoEncoder: EncoderLike<Closable, VideoEncoderConfig> | null = null;
@@ -224,6 +234,8 @@ export async function runExport(plan: ExportPlan, codecs: CodecChoice, deps: Exp
     // ---- video frames ----
     const { canvas, ctx } = deps.createCanvas(plan.width, plan.height);
     report('video', 0);
+    let lastYield = deps.now();
+    let lastReport = lastYield;
     for (let i = 0; i < total; i++) {
       checkAbort();
       if (fatal) throw fatal;
@@ -243,9 +255,16 @@ export async function runExport(plan: ExportPlan, codecs: CodecChoice, deps: Exp
       }
       feedAudioUntil(frameTimestampUs(i + 1, plan.fps) / 1_000_000, false);
       while (videoEncoder.encodeQueueSize > MAX_VIDEO_QUEUE && !fatal && !signal?.aborted) await waitForDequeue(videoEncoder);
-      if ((i + 1) % MUX_SYNC_EVERY === 0) await muxChain;
-      if ((i + 1) % YIELD_EVERY === 0) await yieldToUi();
-      report('video', i + 1);
+      if (pendingMux > MAX_PENDING_MUX) await muxChain;
+      const now = deps.now();
+      if (now - lastReport >= PROGRESS_INTERVAL_MS || i + 1 === total) {
+        lastReport = now;
+        report('video', i + 1);
+      }
+      if (now - lastYield >= YIELD_INTERVAL_MS) {
+        await yieldToUi();
+        lastYield = deps.now();
+      }
     }
     feedAudioUntil(audioLen / (mixed?.sampleRate ?? 1), true);
     checkAbort();

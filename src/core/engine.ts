@@ -15,6 +15,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import type { Canvas2D } from './registry';
+import type { Project } from './types';
 
 export interface RenderFrameOptions {
   /** Draw for export (may use higher quality, must wait for exact frames). */
@@ -55,11 +56,21 @@ export interface PlaybackEngine {
    * honouring volume, fades, speed, muted tracks) for the given range.
    */
   mixAudio(opts: AudioMixOptions): Promise<AudioBuffer>;
+  /**
+   * A separate, playback-less renderer for ANOTHER project (e.g. a part of the
+   * timeline being baked into one file). It never touches the preview; call
+   * `dispose()` when done.
+   */
+  forProject?(project: Project): OfflineRenderer;
   /** Silences preview playback (e.g. while recording a voiceover). Export is unaffected. */
   setPreviewMuted?(muted: boolean): void;
+  /** Frees export-only decoders once an export (or merge) has finished. */
+  endExport?(): void;
   /** Releases decoders, audio contexts, listeners. */
   dispose(): void;
 }
+
+export type OfflineRenderer = Pick<PlaybackEngine, 'renderFrame' | 'mixAudio' | 'dispose'>;
 
 let current: PlaybackEngine | null = null;
 const listeners = new Set<() => void>();

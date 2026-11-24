@@ -13,14 +13,14 @@ export const PROJECT_STORAGE_KEY = 'erdemcut:project:v1';
 const DB_NAME = 'erdemcut';
 const STORE = 'assets';
 
-export type SerializedAsset = Omit<MediaAsset, 'objectURL' | 'blob'>;
+export type SerializedAsset = Omit<MediaAsset, 'objectURL' | 'blob' | 'previewURL'>;
 export type SerializedProject = Omit<Project, 'assets'> & { assets: Record<string, SerializedAsset> };
 
 /** Strips runtime-only fields so the project can be JSON-stringified. */
 export function serializeProject(project: Project): SerializedProject {
   const assets: Record<string, SerializedAsset> = {};
   for (const [id, a] of Object.entries(project.assets)) {
-    const { objectURL: _u, blob: _b, ...rest } = a;
+    const { objectURL: _u, blob: _b, previewURL: _p, ...rest } = a;
     assets[id] = rest;
   }
   return { ...project, assets };

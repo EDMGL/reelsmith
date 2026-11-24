@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { soundApi } from './server/soundApi';
 
 /**
  * Cross-origin isolation headers: required for SharedArrayBuffer (worker/WASM
@@ -14,7 +15,7 @@ const isolationHeaders = {
 };
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), soundApi()],
   server: { headers: isolationHeaders },
   preview: { headers: isolationHeaders },
   // Pre-bundle the Whisper worker's dependency up front: otherwise Vite discovers it the first time

@@ -3,6 +3,7 @@
  * (getUserMedia), MediaRecorder per output, and a remux step that turns the
  * recorder's WebM/MP4 (no duration, no seek index) into a normal seekable file.
  */
+import { voiceConstraints } from '../voiceover/mic';
 
 export interface Sources {
   screen: boolean;
@@ -25,7 +26,7 @@ export async function openCamera(deviceId?: string): Promise<MediaStream> {
 
 export async function openMicStream(deviceId?: string): Promise<MediaStream> {
   return navigator.mediaDevices.getUserMedia({
-    audio: { ...(deviceId ? { deviceId: { exact: deviceId } } : {}), echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    audio: voiceConstraints(deviceId),
     video: false,
   });
 }

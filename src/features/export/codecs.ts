@@ -152,6 +152,19 @@ async function firstSupported<T extends { config: unknown }>(list: T[], check: (
   return null;
 }
 
+/**
+ * Like firstSupported, but tries each candidate with hardware encoding preferred
+ * first and falls back to the same config without a preference (software OK).
+ */
+async function firstSupportedVideo(list: VideoCandidate[], api: CodecSupportApi): Promise<VideoCandidate | null> {
+  for (const c of list) {
+    const hw: VideoEncoderConfig = { ...c.config, hardwareAcceleration: 'prefer-hardware' };
+    if (await api.video(hw)) return { ...c, config: hw };
+    if (await api.video(c.config)) return c;
+  }
+  return null;
+}
+
 function describe(container: Container, video: VideoCandidate, audio: AudioCandidate | null): string {
   return `${container === 'mp4' ? 'MP4' : 'WebM'} (${video.label}${audio ? ` + ${audio.label}` : ', no audio'})`;
 }
@@ -164,7 +177,7 @@ export async function selectCodecs(r: CodecRequest, api: CodecSupportApi = brows
   const order: Container[] = r.preferred === 'mp4' ? ['mp4', 'webm'] : ['webm', 'mp4'];
   const options: { container: Container; video: VideoCandidate; audio: AudioCandidate | null }[] = [];
   for (const container of order) {
-    const video = await firstSupported(videoCandidates(container, r), (c) => api.video(c));
+    const video = await firstSupportedVideo(videoCandidates(container, r), api);
     if (!video) continue;
     const audio = await firstSupported(audioCandidates(container, r), (c) => api.audio(c));
     options.push({ container, video, audio });

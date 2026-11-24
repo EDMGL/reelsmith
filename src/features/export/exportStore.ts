@@ -172,6 +172,7 @@ export const useExportStore = create<ExportState>()((set, get) => ({
       if (isAbortError(e)) set({ status: 'cancelled', error: null });
       else set({ status: 'error', error: e instanceof Error ? e.message : String(e) });
     } finally {
+      engine.endExport?.();
       if (controller === ctl) controller = null;
     }
   },

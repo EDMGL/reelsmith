@@ -333,6 +333,37 @@ export function getProjectDuration(project: Project): number {
   return getProjectIndex(project).duration;
 }
 
+const editPointCache = new WeakMap<Project['clips'], number[]>();
+
+/**
+ * Sorted, de-duplicated cut points of the timeline: 0, the end, and every
+ * start/end of picture and sound clips (subtitle/text clips are left out: a
+ * caption every few seconds would make "next cut" useless). Cached per clips object.
+ */
+export function editPoints(project: Project): number[] {
+  let pts = editPointCache.get(project.clips);
+  if (!pts) {
+    const raw = [0, getProjectDuration(project)];
+    for (const c of Object.values(project.clips)) {
+      if (c.type === 'subtitle' || c.type === 'text') continue;
+      raw.push(c.start, clipEnd(c));
+    }
+    raw.sort((a, b) => a - b);
+    pts = [];
+    for (const t of raw) if (pts.length === 0 || t - pts[pts.length - 1]! > 1e-3) pts.push(t);
+    editPointCache.set(project.clips, pts);
+  }
+  return pts;
+}
+
+/** The cut point before (`dir` -1) or after (+1) `t`; stays put at the ends. */
+export function adjacentEditPoint(project: Project, t: number, dir: -1 | 1): number {
+  const pts = editPoints(project);
+  if (dir > 0) return pts.find((p) => p > t + 1e-3) ?? pts[pts.length - 1] ?? 0;
+  for (let i = pts.length - 1; i >= 0; i--) if (pts[i]! < t - 1e-3) return pts[i]!;
+  return 0;
+}
+
 /** True if the clip covers time `t` (start inclusive, end exclusive). */
 export function clipContainsTime(clip: Pick<Clip, 'start' | 'duration'>, t: number): boolean {
   return t >= clip.start - TIME_EPSILON && t < clipEnd(clip) - TIME_EPSILON;

@@ -8,7 +8,16 @@ import { create } from 'zustand';
 import { getEngine, getProjectDuration, getTrackClips, useEditorStore, type Id } from '../../core';
 import { importFile } from '../media/importMedia';
 import { decodeRecording, listMics, openMic, type MicSession } from './mic';
+import { DENOISE_STRENGTHS } from '../denoise/spectralGate';
+import { cleanChannel } from '../denoise/voiceClean';
 import { encodeWav, type PcmLike } from './wav';
+
+/** Runs the speech cleanup chain (echo, rumble, hiss, level) on a take; mono out. */
+export function cleanTake(pcm: PcmLike): PcmLike {
+  const { label: _l, hint: _h, ...opts } = DENOISE_STRENGTHS.voice;
+  const data = cleanChannel(Float32Array.from(pcm.getChannelData(0)), pcm.sampleRate, opts);
+  return { numberOfChannels: 1, sampleRate: pcm.sampleRate, length: data.length, getChannelData: () => data };
+}
 
 export type VoiceoverStatus = 'idle' | 'countdown' | 'recording' | 'saving';
 
@@ -23,6 +32,8 @@ interface VoiceoverState {
   devices: { id: string; label: string }[];
   muteTimeline: boolean;
   useCountdown: boolean;
+  /** Remove room echo / rumble / hiss and even out the level after each take. */
+  cleanVoice: boolean;
   takes: number;
   message: { kind: 'info' | 'error'; text: string } | null;
 }
@@ -37,6 +48,7 @@ export const useVoiceoverStore = create<VoiceoverState>()(() => ({
   devices: [],
   muteTimeline: true,
   useCountdown: true,
+  cleanVoice: true,
   takes: 0,
   message: null,
 }));
@@ -168,8 +180,9 @@ export async function stopVoiceover(): Promise<boolean> {
     const blob = await s.stop();
     cleanup();
     if (cancelled) return false;
-    const pcm = await voiceoverDeps.decode(blob);
-    if (pcm.length / pcm.sampleRate < 0.2) throw new Error('The recording is too short.');
+    const raw = await voiceoverDeps.decode(blob);
+    if (raw.length / raw.sampleRate < 0.2) throw new Error('The recording is too short.');
+    const pcm = get().cleanVoice ? cleanTake(raw) : raw;
     const take = get().takes + 1;
     const file = new File([encodeWav(pcm, { maxChannels: 1 })], `Voiceover ${take}.wav`, { type: 'audio/wav' });
     const assetId = await voiceoverDeps.importFile(file);

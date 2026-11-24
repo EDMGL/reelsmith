@@ -24,7 +24,9 @@ export const SHORTCUT_GROUPS: { title: string; rows: ShortcutRow[] }[] = [
       { action: 'Play / pause', keys: [['Space']] },
       { action: 'Previous / next frame', keys: [['←'], ['→']] },
       { action: 'Back / forward 1 second', keys: [[SHIFT, '←'], [SHIFT, '→']] },
-      { action: 'Go to start', keys: [['Home']] },
+      { action: 'Go to start / end', keys: [['Home'], ['End']] },
+      { action: 'Previous / next cut', keys: [['↑'], ['↓']] },
+      { action: 'Jump anywhere', keys: [['Click overview']] },
     ],
   },
   {

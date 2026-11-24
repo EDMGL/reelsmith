@@ -38,6 +38,7 @@ src/
   features/voiceover/   microphone voiceover recording ("Voiceover" panel)
   features/motion/      zoom & motion (punch-in, zoom in/out, pans), jump-cut alternate zooms
   features/recorder/    screen + camera + mic recorder ("Record" panel)
+  features/templates/   ready-made templates with media slots ("Templates" panel)
   features/export/      P4 — export (toolbar action, encoder)
 ```
 
@@ -326,6 +327,53 @@ step. Effects go to the playhead on a free “SFX” track. Generated audio is s
 minute stereo; renders longer than 4 minutes are stored as mono (≈5.3 MB/min) to bound the size.
 Previews use their own `AudioContext` (never the editor engine), one at a time, and stop when the
 timeline plays.
+
+## Templates
+
+**Templates** panel (`src/features/templates/`): 107 original, ready-made edits with media slots —
+11 hand-made "featured" ones (`catalogue/featured.ts`) and 96 composed from building blocks
+(`recipes.ts`: layouts — full frame, blurred background, instant photo, framed, split 2/3-up, 2×2
+grid, grid build-up, picture-in-picture bubble; rhythms; looks from the effect presets; motion
+patterns; transitions; text treatments) by an explicit, curated row list (`catalogue/generated.ts`,
+stable ids). 16 categories, 9:16 / 1:1 / 16:9 / 4:5. Every template references a track of the
+built-in music catalogue, and **cut points are whole beats of that track's real tempo** (4/4,
+`MusicTrackDef.bpm`, checked against `compose(seed)` in the tests), ending on a bar line.
+
+- **Format** (`types.ts`, plain JSON): aspect, duration, ordered slots (start, duration,
+  accepts photo/video/any, stacking `layer`, `fit` cover/contain in an optional `frame`, zoom,
+  rotation, motion, effects, shape, fades, video volume, and `copies` — e.g. a blurred full-frame
+  background showing the same media), text layers (style, position, timing, `editable`) and an
+  optional music reference (track id + variation seed + volume). Text sizes are authored for a
+  1080 px short side and scaled to the canvas.
+- **Builder** (`builder.ts`, pure): media fills its frame (cover) whatever its aspect; images get
+  the slot length + motion; videos are trimmed to a window that skips up to 1.5 s of the start
+  (repeat uses of one video show later moments). A video shorter than its slot is slowed down
+  (to ≥ 50 % speed); if still too short, a main-layer slot is shortened and everything after it
+  moves up (gap closed), an upper-layer slot just ends early — never outside the source bounds.
+  Fewer media than slots: the media are cycled in order; extra files are reported as unused.
+  Existing free tracks are reused (main slots → Main, blurred backgrounds → a "Background" track
+  right below it, texts on top, music via the Music panel's free-track rule).
+- **Fill view**: one picker / drop zone imports files through the normal media import and fills
+  empty slots in order (respecting photo/video-only slots); library items can be clicked into
+  the selected (or next empty) slot, or "Use all"; click two slots to swap, ‹ › to move, × to
+  clear; empty slots show which media they repeat; editable texts get fields (empty = hidden).
+- **Apply** (`apply.ts`): renders the music first, then commits everything as **one undo step**.
+  Empty timeline → canvas switches to the template's aspect and it builds at 0. Otherwise the
+  user chooses **Append** (default, after the current end) or **Replace timeline** (refused while
+  a locked track holds clips), and switching the aspect is an explicit checkbox. The result is
+  ordinary clips.
+- **My templates** (`userTemplates.ts`): "Save as template" turns the timeline into a template
+  (video/photo clips → slots keeping timing, placement, motion, effects, shape and fades; their
+  track position → layer; text clips → editable texts; generated catalogue music → music
+  reference; other audio, subtitles and video trims/speed are not kept, and the UI says so).
+  Stored in localStorage (`erdemcut:templates:v1`; templates contain no media). Export writes
+  `<name>.template.json`; import validates everything (`validate.ts`: types, ranges, known
+  effects/music, no overlaps per layer, size limits, unknown fields stripped) and shows readable
+  errors. Imported templates get a fresh id.
+- **Gallery**: category tabs (+ Featured, My templates), search, aspect filter; cards show aspect,
+  length, slot count and a DOM-drawn preview of the layout/texts that steps through the real cut
+  rhythm only while hovered/focused; previews mount when near the viewport and off-screen cards
+  use `content-visibility: auto`.
 
 ## Auto captions (on-device Whisper)
 

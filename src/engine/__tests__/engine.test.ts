@@ -9,7 +9,7 @@ import {
   type VideoClip,
 } from '../../core';
 import { makeAsset } from '../../core/__tests__/fixtures';
-import { ErdemcutEngine, type EngineDeps } from '../engine';
+import { ErdemcutEngine, MAX_MEDIA_STALL, type EngineDeps } from '../engine';
 import { renderVideoClip } from '../videoRenderer';
 import { FakeCtx, FakeVideo, fakeElementFactory } from './fakes';
 
@@ -51,6 +51,14 @@ function makeEngine(over: Partial<EngineDeps> = {}): { engine: ErdemcutEngine; n
     ...over,
   });
   return { engine, now, frames };
+}
+
+/** Every fake element has loaded and finished seeking (it can play without waiting). */
+function mediaReady(): void {
+  for (const v of FakeVideo.created) {
+    v.readyState = 4;
+    v.seeking = false;
+  }
 }
 
 beforeEach(() => {
@@ -116,6 +124,26 @@ describe('renderFrame (export)', () => {
   });
 });
 
+describe('preview proxy', () => {
+  it('plays the preview from the proxy and exports from the original', async () => {
+    S().updateAsset('vid', { previewURL: 'blob:vid-proxy' });
+    const { engine } = makeEngine();
+    await engine.renderFrame(1, new FakeCtx().asCtx);
+    await engine.renderFrame(1, new FakeCtx().asCtx, { isExport: true });
+    expect(engine.previewPool.get('left')!.url).toBe('blob:vid-proxy');
+    expect(engine.exportPool.get('left')!.url).toBe('blob:vid');
+  });
+
+  it('switches a preview element to the proxy once it arrives', async () => {
+    const { engine } = makeEngine();
+    await engine.renderFrame(1, new FakeCtx().asCtx);
+    expect(engine.previewPool.get('left')!.url).toBe('blob:vid');
+    S().updateAsset('vid', { previewURL: 'blob:vid-proxy' });
+    await engine.renderFrame(1, new FakeCtx().asCtx);
+    expect(engine.previewPool.get('left')!.url).toBe('blob:vid-proxy');
+  });
+});
+
 describe('renderFrame (preview)', () => {
   it('drops a stale render when a newer one for the same target started', async () => {
     const { engine } = makeEngine();
@@ -134,10 +162,12 @@ describe('playback', () => {
     S().setCurrentTime(4);
     S().play();
     expect(FakeVideo.created.length).toBeGreaterThan(0);
+    mediaReady();
     now.t = 0.5;
     frames.run();
     expect(S().currentTime).toBeCloseTo(4.5);
     expect(S().isPlaying).toBe(true);
+    mediaReady();
     now.t = 2;
     frames.run();
     expect(S().currentTime).toBe(5);
@@ -172,12 +202,54 @@ describe('playback', () => {
   it('re-syncs the clock on a user seek while playing', () => {
     const { now, frames } = makeEngine();
     S().play();
+    mediaReady();
     now.t = 0.5;
     frames.run();
     S().setCurrentTime(3);
+    mediaReady();
     now.t = 0.75;
     frames.run();
     expect(S().currentTime).toBeCloseTo(3.25);
+  });
+
+  it('holds the playhead while the playing element seeks/buffers, then runs on after MAX_MEDIA_STALL', () => {
+    const { now, frames } = makeEngine();
+    S().setCurrentTime(4);
+    S().play();
+    const el = engine!.previewPool.get('right')!.el as unknown as FakeVideo;
+    el.readyState = 4;
+    el.seeking = true; // start-of-play seek still in flight
+    now.t = 0.5;
+    frames.run();
+    expect(S().currentTime).toBeCloseTo(4);
+    el.seeking = false;
+    now.t = 0.6;
+    frames.run();
+    expect(S().currentTime).toBeCloseTo(4.1); // resumes from where it waited, no jump
+    el.readyState = 2; // buffering mid-play
+    now.t = 0.7;
+    frames.run();
+    now.t = 0.7 + MAX_MEDIA_STALL + 0.1;
+    frames.run();
+    expect(S().currentTime).toBeGreaterThan(4.1); // never stuck forever
+  });
+
+  it('re-anchors the clock to a playing element that runs behind instead of re-seeking it', () => {
+    const { now, frames } = makeEngine();
+    S().setCurrentTime(3.25);
+    S().play();
+    mediaReady();
+    const el = engine!.previewPool.get('right')!.el as unknown as FakeVideo;
+    const seeks = el.seekCount;
+    // clip 'right': start 3, sourceIn 4, speed 2 -> project t = 3 + (ct - 4) / 2
+    (el as unknown as { _t: number })._t = 4.6; // element advancing (t = 3.3)
+    now.t = 0.05;
+    frames.run();
+    (el as unknown as { _t: number })._t = 4.7; // t = 3.35 while the wall clock says 3.55
+    now.t = 0.3;
+    frames.run();
+    expect(S().currentTime).toBeCloseTo(3.35);
+    expect(el.seekCount).toBe(seeks);
   });
 
   it('imperative play/pause/seek mirror to the store', () => {

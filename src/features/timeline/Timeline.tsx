@@ -30,6 +30,7 @@ import { DragLayer } from './DragLayer';
 import { clearDropPreview, handleTimelineDragLeave, handleTimelineDragOver, handleTimelineDrop } from './drop';
 import { clipsInBox, contentWidthPx, displayTracks } from './geometry';
 import { runGesture, startScrub } from './interactions';
+import { Navigator } from './Navigator';
 import { PlayheadMarker } from './Playhead';
 import { Ruler } from './Ruler';
 import { TimelineToolbar } from './TimelineToolbar';
@@ -86,6 +87,15 @@ function useClipsByTrack(project: Project): Map<Id, readonly Clip[]> {
 }
 
 /** Mounted window = 3 viewport-wide chunks around the visible one (changes only when a chunk boundary is crossed). */
+/**
+ * New scrollLeft that brings x (px) into a view of `visibleW` px, or null if it
+ * is already visible. Lands a third into the view, so there is context on both sides.
+ */
+export function revealScrollLeft(scrollLeft: number, visibleW: number, x: number): number | null {
+  if (x >= scrollLeft && x <= scrollLeft + visibleW) return null;
+  return Math.max(0, x - visibleW / 3);
+}
+
 function windowFor(scrollLeft: number, viewportPx: number): { chunk: number; idx: number } {
   const chunk = Math.max(400, viewportPx);
   return { chunk, idx: Math.floor(Math.max(0, scrollLeft) / chunk) };
@@ -268,6 +278,19 @@ export function Timeline({ toolbarExtras }: { toolbarExtras?: ReactNode }) {
     });
   }, []);
 
+  // A jump (Home/End, cut keys, overview strip, typed time...) that lands outside
+  // the visible part scrolls the timeline there, so the playhead never "disappears".
+  // Scrubbing inside the view never scrolls (the playhead is under the pointer).
+  useEffect(() => {
+    return useEditorStore.subscribe((s, prev) => {
+      if (s.seekNonce === prev.seekNonce || s.isPlaying) return;
+      const el = scrollRef.current;
+      if (!el || useTimelineUi.getState().drag) return;
+      const left = revealScrollLeft(el.scrollLeft, viewWidth.current - HEADER_WIDTH, s.currentTime * s.zoom);
+      if (left !== null) el.scrollLeft = left;
+    });
+  }, []);
+
   // A drag that ends anywhere (Esc, drop outside) clears the drop preview.
   useEffect(() => {
     window.addEventListener('dragend', clearDropPreview);
@@ -368,6 +391,7 @@ export function Timeline({ toolbarExtras }: { toolbarExtras?: ReactNode }) {
           </div>
         </div>
       </div>
+      <Navigator scrollRef={scrollRef} zoom={zoom} />
       <Notice />
       <ContextMenu />
     </div>
