@@ -1,5 +1,35 @@
 # Erdemcut
 
+## İndir / Download
+
+| | |
+|---|---|
+| **macOS (Apple Silicon: M1/M2/M3/M4)** | [ErdemCut-mac-arm64.dmg](https://github.com/EDMGL/reelsmith/releases/latest/download/ErdemCut-mac-arm64.dmg) |
+| **macOS (Intel)** | [ErdemCut-mac-x64.dmg](https://github.com/EDMGL/reelsmith/releases/latest/download/ErdemCut-mac-x64.dmg) |
+| **Windows 10/11 (x64)** | [ErdemCut-windows-setup.exe](https://github.com/EDMGL/reelsmith/releases/latest/download/ErdemCut-windows-setup.exe) |
+
+**TR:** Yukarıdan işletim sistemine uygun dosyayı indirip kurun. Uygulama henüz imzalı olmadığı için ilk açılışta uyarı çıkar:
+- **Mac:** uygulamaya sağ tık → **Aç** (veya Sistem Ayarları → Gizlilik ve Güvenlik → **Yine de Aç**).
+- **Windows:** SmartScreen'de **Daha fazla bilgi** → **Yine de çalıştır**.
+
+**EN:** Download the file for your system above and install it. The app is not code-signed yet, so the first launch shows a warning:
+- **Mac:** right-click the app → **Open** (or System Settings → Privacy & Security → **Open Anyway**).
+- **Windows:** in SmartScreen click **More info** → **Run anyway**.
+
+The desktop app bundles `ffmpeg`; `yt-dlp` (for "Find sound") is downloaded automatically on first use. Projects are stored locally, per app origin (`http://127.0.0.1:47821`), so keep that port free.
+
+### Building the desktop app
+
+```bash
+npm run desktop:dev    # build + run in Electron
+npm run desktop:dist   # build + installer for the current OS (output in release/)
+```
+
+Pushing a `v*` tag runs `.github/workflows/release.yml`, which builds the installers and attaches them to the GitHub Release.
+The bundled `ffmpeg-static` binary is GPL-licensed; see its license if you redistribute the app.
+
+---
+
 A fully client-side, browser-based video editor (Vite + React + TypeScript + Zustand).
 
 Requires Node 22+ (`nvm use` picks it up from `.nvmrc`).

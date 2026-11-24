@@ -1,0 +1,35 @@
+appId: com.erdemcut.app
+productName: ErdemCut
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**
+  - dist-electron/**
+  - package.json
+asar: true
+asarUnpack:
+  - node_modules/ffmpeg-static/**
+publish: null
+afterPack: electron/adhoc-sign.cjs
+mac:
+  category: public.app-category.video
+  icon: build/icon.png
+  identity: null
+  target:
+    - target: dmg
+  artifactName: ErdemCut-mac-${arch}.${ext}
+  extendInfo:
+    NSCameraUsageDescription: ErdemCut records your camera when you use the Record panel.
+    NSMicrophoneUsageDescription: ErdemCut records your microphone for voiceovers and screen recordings.
+    NSScreenCaptureUsageDescription: ErdemCut records your screen when you use the Record panel.
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch: x64
+  artifactName: ErdemCut-windows-setup.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true

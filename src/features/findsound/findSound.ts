@@ -44,10 +44,10 @@ async function errorOf(r: Response): Promise<string> {
 }
 
 export const soundApi = {
-  async status(): Promise<{ ytdlp: boolean; ffmpeg: boolean } | null> {
+  async status(): Promise<{ ytdlp: boolean; ffmpeg: boolean; desktop?: boolean } | null> {
     try {
       const r = await fetch('/api/sound/status');
-      return r.ok ? ((await r.json()) as { ytdlp: boolean; ffmpeg: boolean }) : null;
+      return r.ok ? ((await r.json()) as { ytdlp: boolean; ffmpeg: boolean; desktop?: boolean }) : null;
     } catch {
       return null;
     }

@@ -15,6 +15,7 @@ export default function FindSoundPanel() {
   const [message, setMessage] = useState<{ kind: 'info' | 'error'; text: string } | null>(null);
   /** 'server' = the local API did not answer (app server stopped or outdated), 'tools' = yt-dlp/ffmpeg missing. */
   const [problem, setProblem] = useState<'server' | 'tools' | null>(null);
+  const [desktop, setDesktop] = useState(false);
   const [opts, setOpts] = useState<AddSoundOptions>({ startAt: 'zero', volume: 0.3 });
   /** MP3 downloads (in flight or done), shared by preview prefetch and Add. */
   const blobs = useRef(new Map<string, Promise<Blob>>());
@@ -23,7 +24,10 @@ export default function FindSoundPanel() {
   const searchCtl = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    void soundApi.status().then((s) => setProblem(!s ? 'server' : s.ytdlp && s.ffmpeg ? null : 'tools'));
+    void soundApi.status().then((s) => {
+      setDesktop(!!s?.desktop);
+      setProblem(!s ? 'server' : s.ytdlp && s.ffmpeg ? null : 'tools');
+    });
     return () => {
       audio.current?.pause();
       searchCtl.current?.abort();
@@ -102,12 +106,16 @@ export default function FindSoundPanel() {
     <div className="findsound">
       {problem === 'tools' && (
         <p className="fs-note fs-error">
-          The sound finder needs <code>yt-dlp</code> and <code>ffmpeg</code> on this computer: <code>brew install yt-dlp ffmpeg</code>, then restart the app.
+          {desktop ? (
+            <>The sound finder could not set up its tools (<code>yt-dlp</code>, <code>ffmpeg</code>). Check your internet connection and restart ErdemCut.</>
+          ) : (
+            <>The sound finder needs <code>yt-dlp</code> and <code>ffmpeg</code> on this computer: <code>brew install yt-dlp ffmpeg</code>, then restart the app.</>
+          )}
         </p>
       )}
       {problem === 'server' && (
         <p className="fs-note fs-error">
-          The app’s local server is not answering. Close the ErdemCut terminal window and start ErdemCut again from the desktop.
+          The app’s local server is not answering. {desktop ? 'Restart ErdemCut.' : 'Close the ErdemCut terminal window and start ErdemCut again from the desktop.'}
         </p>
       )}
       <form

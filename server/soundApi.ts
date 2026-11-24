@@ -19,7 +19,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { Readable } from 'node:stream';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
@@ -29,18 +29,32 @@ const MAX_RESULTS = 12;
 /** Longer videos are refused (an hour-long mix is not a soundtrack). */
 const MAX_SECONDS = 20 * 60;
 const CACHE_DIR = join(tmpdir(), 'erdemcut-sounds');
-const EXTRA_PATHS = ['/opt/homebrew/bin', '/usr/local/bin'];
+const EXTRA_PATHS = process.platform === 'win32' ? [] : ['/opt/homebrew/bin', '/usr/local/bin'];
 
-function findBin(name: string): string | null {
-  for (const dir of [...(process.env.PATH ?? '').split(':'), ...EXTRA_PATHS]) {
-    if (dir && existsSync(join(dir, name))) return join(dir, name);
+/** Looks `name` up on PATH (plus the usual Homebrew dirs, which GUI-launched apps lack). */
+export function findBin(name: string): string | null {
+  const file = process.platform === 'win32' && !name.endsWith('.exe') ? `${name}.exe` : name;
+  for (const dir of [...(process.env.PATH ?? '').split(delimiter), ...EXTRA_PATHS]) {
+    if (dir && existsSync(join(dir, file))) return join(dir, file);
   }
   return null;
 }
 
+export interface SoundApiOptions {
+  /**
+   * Resolves the tool binaries. `ensure` is true when a request needs them right now (the
+   * implementation may download yt-dlp then). Default: PATH lookup.
+   */
+  resolveTools?: (ensure: boolean) => Promise<{ ytdlp: string | null; ffmpeg: string | null }>;
+  /** Running inside the desktop app: status reports it so the UI skips "brew install" advice. */
+  desktop?: boolean;
+  /** yt-dlp is missing but will be downloaded on first use (reported as available). */
+  ytdlpOnDemand?: () => boolean;
+}
+
 function run(bin: string, args: string[], timeoutMs: number): Promise<{ code: number; out: string; err: string }> {
   return new Promise((resolve) => {
-    const env = { ...process.env, PATH: [...EXTRA_PATHS, process.env.PATH ?? ''].join(':') };
+    const env = { ...process.env, PATH: [...EXTRA_PATHS, process.env.PATH ?? ''].join(delimiter) };
     const p = spawn(bin, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
     let err = '';
@@ -180,7 +194,7 @@ async function cachedFile(id: string): Promise<string | null> {
   }
 }
 
-async function download(id: string, ytdlp: string, ffmpegDir: string): Promise<string> {
+async function download(id: string, ytdlp: string, ffmpeg: string): Promise<string> {
   const have = await cachedFile(id);
   if (have) return have;
   await mkdir(CACHE_DIR, { recursive: true });
@@ -199,7 +213,7 @@ async function download(id: string, ytdlp: string, ffmpegDir: string): Promise<s
       '--match-filter',
       `duration <= ${MAX_SECONDS}`,
       '--ffmpeg-location',
-      ffmpegDir,
+      ffmpeg,
       '-o',
       join(CACHE_DIR, '%(id)s.%(ext)s'),
       '--',
@@ -219,7 +233,7 @@ async function audio(res: ServerResponse, id: string, ytdlp: string, ffmpeg: str
   if (!ID_RE.test(id)) return json(res, 400, { error: 'Bad video id' });
   let p = inflight.get(id);
   if (!p) {
-    p = download(id, ytdlp, join(ffmpeg, '..')).finally(() => inflight.delete(id));
+    p = download(id, ytdlp, ffmpeg).finally(() => inflight.delete(id));
     inflight.set(id, p);
   }
   try {
@@ -249,15 +263,26 @@ async function thumb(res: ServerResponse, id: string): Promise<void> {
   }
 }
 
-async function handle(req: IncomingMessage, res: ServerResponse, next: () => void): Promise<void> {
+async function handle(opts: SoundApiOptions, req: IncomingMessage, res: ServerResponse, next: () => void): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://localhost');
   if (!url.pathname.startsWith('/api/sound/')) return next();
-  const ytdlp = findBin('yt-dlp');
-  const ffmpeg = findBin('ffmpeg');
   const route = url.pathname.slice('/api/sound/'.length);
   if (route === 'thumb') return thumb(res, url.searchParams.get('id') ?? '');
-  if (route === 'status') return json(res, 200, { ytdlp: !!ytdlp, ffmpeg: !!ffmpeg });
-  if (!ytdlp || !ffmpeg) return json(res, 503, { error: 'yt-dlp and ffmpeg are needed: brew install yt-dlp ffmpeg' });
+  const resolve = opts.resolveTools ?? (async () => ({ ytdlp: findBin('yt-dlp'), ffmpeg: findBin('ffmpeg') }));
+  if (route === 'status') {
+    const t = await resolve(false);
+    return json(res, 200, { ytdlp: !!t.ytdlp || !!opts.ytdlpOnDemand?.(), ffmpeg: !!t.ffmpeg, desktop: !!opts.desktop });
+  }
+  let tools: { ytdlp: string | null; ffmpeg: string | null };
+  try {
+    tools = await resolve(true);
+  } catch (e) {
+    return json(res, 503, { error: `Could not set up yt-dlp: ${e instanceof Error ? e.message : String(e)}` });
+  }
+  const { ytdlp, ffmpeg } = tools;
+  if (!ytdlp || !ffmpeg) {
+    return json(res, 503, { error: opts.desktop ? 'The sound tools (yt-dlp, ffmpeg) are not available.' : 'yt-dlp and ffmpeg are needed: brew install yt-dlp ffmpeg' });
+  }
   if (route === 'search') return search(res, url.searchParams.get('q') ?? '', ytdlp);
   if (route === 'audio') return audio(res, url.searchParams.get('id') ?? '', ytdlp, ffmpeg);
   if (route === 'stream') return stream(req, res, url.searchParams.get('id') ?? '', ytdlp);
@@ -271,10 +296,17 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
   json(res, 404, { error: 'Unknown route' });
 }
 
+type Next = () => void;
+/** Connect-style middleware; usable by Vite and by any plain Node http server. */
+export function createSoundMiddleware(opts: SoundApiOptions = {}): (req: IncomingMessage, res: ServerResponse, next: Next) => void {
+  return (req, res, next) => void handle(opts, req, res, next).catch((e) => json(res, 500, { error: String(e) }));
+}
+
 export function soundApi(): Plugin {
+  const middleware = createSoundMiddleware();
   // Must return nothing: a function returned from configureServer is run as a post-middleware hook.
   const mount = (server: { middlewares: { use: (fn: (req: IncomingMessage, res: ServerResponse, next: () => void) => void) => unknown } }): void => {
-    server.middlewares.use((req, res, next) => void handle(req, res, next).catch((e) => json(res, 500, { error: String(e) })));
+    server.middlewares.use(middleware);
   };
   return { name: 'erdemcut-sound-api', configureServer: mount, configurePreviewServer: mount };
 }
